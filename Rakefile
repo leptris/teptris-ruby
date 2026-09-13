@@ -35,7 +35,7 @@ task :compile do
   toolchain = []
   if win
     cc = RbConfig::CONFIG["CC"].split(" ").first
-    toolchain = ["-G "MinGW Makefiles"", "-DCMAKE_C_COMPILER=#{cc}"]
+    toolchain = ['-G "MinGW Makefiles"', "-DCMAKE_C_COMPILER=#{cc}"]
   end
   if src
     sh "cmake -B #{build} -S #{src} #{(CMAKE_FLAGS + toolchain).join(' ')}"
