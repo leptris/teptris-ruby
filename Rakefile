@@ -28,13 +28,22 @@ task :compile do
   build = File.expand_path("tmp/libteptris-#{version}", __dir__)
   rm_rf(build)
   mkdir_p(build)
+  # On Windows the ext compiles under Ruby's mingw toolchain; build the
+  # C core with the SAME toolchain so -L/-l links natively (MSVC-built
+  # DLLs need import-lib gymnastics — issue #15).
+  win = RUBY_PLATFORM =~ /mingw/
+  toolchain = []
+  if win
+    cc = RbConfig::CONFIG["CC"].split(" ").first
+    toolchain = ["-G", "MinGW Makefiles", "-DCMAKE_C_COMPILER=#{cc}"]
+  end
   if src
-    sh "cmake -B #{build} -S #{src} #{CMAKE_FLAGS.join(' ')}"
+    sh "cmake -B #{build} -S #{src} #{(CMAKE_FLAGS + toolchain).join(' ')}"
     inc = File.expand_path("src/include", src)
   else
     url = "https://api.github.com/repos/leptris/teptris/tarball/v#{version}"
     sh "curl -sL #{url} | tar xz -C #{build} --strip-components=1"
-    sh "cmake -B #{build} -S #{build} #{CMAKE_FLAGS.join(' ')}"
+    sh "cmake -B #{build} -S #{build} #{(CMAKE_FLAGS + toolchain).join(' ')}"
     inc = File.join(build, "src/include")
   end
   sh "cmake --build #{build} --config Release -j"
@@ -52,8 +61,9 @@ task :compile do
   end
 
   # the dylib chain the bundle links (@loader_path rpath)
-  Dir.glob("#{libdir}/libteptris*").each { |f| cp(f, "lib/") unless f.end_with?(".a") }
+  Dir.glob("#{libdir}/libteptris*").each { |f| cp(f, "lib/") unless f.end_with?(".a") || f.end_with?(".dll.a") }
   Dir.glob("#{libdir}/**/teptris.dll").each { |f| cp(f, "lib/") }
+  Dir.glob("#{libdir}/libteptris.dll").each { |f| cp(f, "lib/") }
 end
 
 task spec: :compile unless ENV.key?("TEPTRIS_LIB_PATH")
