@@ -21,7 +21,7 @@ CMAKE_FLAGS = %w[
   -DTEPTRIS_BUILD_CLI=OFF
 ].freeze
 
-desc "Build libteptris #{LIBTEPTRIS_VERSION} from the release tarball into lib/"
+desc "Build libteptris + the native extension into lib/"
 task :compile do
   version = ENV.fetch("LIBTEPTRIS_VERSION", LIBTEPTRIS_VERSION)
   src = ENV["TEPTRIS_SRC"] # local checkout overrides the tarball
@@ -30,21 +30,27 @@ task :compile do
   mkdir_p(build)
   if src
     sh "cmake -B #{build} -S #{src} #{CMAKE_FLAGS.join(' ')}"
+    inc = File.expand_path("src/include", src)
   else
     url = "https://api.github.com/repos/leptris/teptris/tarball/v#{version}"
     sh "curl -sL #{url} | tar xz -C #{build} --strip-components=1"
     sh "cmake -B #{build} -S #{build} #{CMAKE_FLAGS.join(' ')}"
+    inc = File.join(build, "src/include")
   end
   sh "cmake --build #{build} --config Release -j"
+  libdir = File.join(build, "src")
 
-  # Pick the produced shared library for this platform into lib/.
-  # MSVC multi-config puts it in src/Release/ and names it teptris.dll
-  # (no lib prefix); single-config generators emit src/libteptris.*.
-  lib = Dir.glob("#{build}/src/**/libteptris.{dylib,so,dll}").first ||
-        Dir.glob("#{build}/src/**/teptris.dll").first
-  raise "libteptris shared library not found under #{build}/src" unless lib
+  extdir = File.expand_path("ext/teptris_ext", __dir__)
+  Dir.chdir(extdir) do
+    rm_f(["Makefile", "teptris_ext.bundle"] + Dir["*.o"])
+    sh "ruby extconf.rb --with-teptris-libdir=#{libdir} --with-teptris-include=#{inc}"
+    sh "make"
+    cp("teptris_ext.bundle", File.expand_path("lib", __dir__))
+  end
 
-  cp(lib, "lib/")
+  # the dylib chain the bundle links (@loader_path rpath)
+  Dir.glob("#{libdir}/libteptris*").each { |f| cp(f, "lib/") unless f.end_with?(".a") }
+  Dir.glob("#{libdir}/*.dll").each { |f| cp(f, "lib/") }
 end
 
 task spec: :compile unless ENV.key?("TEPTRIS_LIB_PATH")
@@ -85,7 +91,9 @@ platforms.each do |platform|
     Rake::Task["compile"].invoke
     spec = Gem::Specification.load("teptris.gemspec").dup
     spec.platform = Gem::Platform.new(platform)
-    spec.files += Dir.glob("lib/{libteptris,teptris}.{dll,so,dylib}")
+    spec.files += Dir.glob("lib/teptris_ext.*") +
+                  Dir.glob("lib/libteptris*.{dylib,so,dll}") +
+                  Dir.glob("lib/*.dll")
     build_gem(spec)
   end
 end
