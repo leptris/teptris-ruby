@@ -45,7 +45,10 @@ task :compile do
     rm_f(["Makefile", "teptris_ext.bundle"] + Dir["*.o"])
     sh "ruby extconf.rb --with-teptris-libdir=#{libdir} --with-teptris-include=#{inc}"
     sh "make"
-    cp("teptris_ext.bundle", File.expand_path("lib", __dir__))
+    ext = Dir["teptris_ext.{so,bundle,dll}"].first
+    raise "extension build produced no bundle in #{extdir}" unless ext
+
+    cp(ext, File.expand_path("lib", __dir__))
   end
 
   # the dylib chain the bundle links (@loader_path rpath)
