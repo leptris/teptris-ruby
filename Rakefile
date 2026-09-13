@@ -53,7 +53,7 @@ task :compile do
 
   # the dylib chain the bundle links (@loader_path rpath)
   Dir.glob("#{libdir}/libteptris*").each { |f| cp(f, "lib/") unless f.end_with?(".a") }
-  Dir.glob("#{libdir}/*.dll").each { |f| cp(f, "lib/") }
+  Dir.glob("#{libdir}/**/teptris.dll").each { |f| cp(f, "lib/") }
 end
 
 task spec: :compile unless ENV.key?("TEPTRIS_LIB_PATH")
