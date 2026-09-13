@@ -18,6 +18,17 @@ cmake --build ../teptris/build
 TEPTRIS_LIB_PATH=../teptris/build/src/libteptris.dylib bundle exec rspec
 ....
 
+== Performance, honestly
+
+At realistic document scale teptris 0.1.0 **trails tomlib 1.4–1.8×** on
+end-to-end parse and dump (the C engine leads 5–8×, FFI materialization
+gives that back). teptris wins on documents with very large tables
+(tomlib degrades quadratically past ~40k keys/table) and over toml-rb
+everywhere (~418× on parse). Recommended adapter order is
+platform-aware: **tomlib default on non-Windows, teptris on Windows**
+(retiring the toml-rb fallback). The fused descriptor pass
+(docs/DESCRIPTOR_ABI.md) targets end-to-end parity when it lands.
+
 == Usage
 
 [source,ruby]
