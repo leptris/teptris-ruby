@@ -1,6 +1,6 @@
 # teptris-ruby — TOML for Ruby at libleptris speed
 
-An FFI-based (no C extension) Ruby TOML 1.0 library over
+A native C-extension (no FFI, no fallback) Ruby TOML 1.0 library over
 https://github.com/leptris/teptris[libteptris] — the TOML counterpart of
 leptris-ruby (XML) and yeptris-ruby (YAML+JSON). API-shape and value
 semantics mirror the `tomlib` gem: offset and local datetimes become
