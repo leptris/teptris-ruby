@@ -59,7 +59,16 @@ task :compile do
     ext = Dir["teptris_ext.{so,bundle,dll}"].first
     raise "extension build produced no bundle in #{extdir}" unless ext
 
-    cp(ext, File.expand_path("lib", __dir__))
+    if win
+      # fat gem: one extension per ruby minor (each binds a different
+      # x64-ucrt-rubyNNN.dll); libteptris.dll below is minor-independent
+      minor = RUBY_VERSION[/\A\d+\.\d+/]
+      dest = File.expand_path("lib/teptris/#{minor}", __dir__)
+      mkdir_p(dest)
+      cp(ext, dest)
+    else
+      cp(ext, File.expand_path("lib", __dir__))
+    end
   end
 
   # the dylib chain the bundle links (@loader_path rpath)
@@ -101,16 +110,27 @@ platforms = [
 ].freeze
 
 platforms.each do |platform|
-  desc "Build pre-compiled gem for the #{platform} platform"
-  task "gem:native:#{platform}" do
-    Rake::Task["compile"].invoke
+  mingw = platform.include?("mingw")
+
+  # Pack a pre-compiled gem from whatever native files already sit in
+  # lib/ — used by CI's fat-gem assembly and never compiles.
+  pack = task "gem:pack:#{platform}" do
+    natives = Dir.glob("lib/teptris_ext.{so,bundle,dll}") +
+              Dir.glob("lib/teptris/*/teptris_ext.so")
+    abort "no native extension under lib/ for #{platform} — run rake compile first" if natives.empty?
+    if mingw && Dir.glob("lib/*.dll").empty?
+      abort "no libteptris.dll under lib/ for #{platform}"
+    end
     spec = Gem::Specification.load("teptris.gemspec").dup
     spec.platform = Gem::Platform.new(platform)
-    spec.files += Dir.glob("lib/teptris_ext.*") +
+    spec.files += natives +
                   Dir.glob("lib/libteptris*.{dylib,so,dll}") +
                   Dir.glob("lib/*.dll")
     build_gem(spec)
   end
+
+  desc "Build pre-compiled gem for the #{platform} platform"
+  task "gem:native:#{platform}" => ["compile", pack.name]
 end
 
 require "rake/clean"
