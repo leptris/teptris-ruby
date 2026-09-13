@@ -77,21 +77,17 @@ jobs:
     needs: bump
     if: always() && !cancelled() && !failure()
     runs-on: ${{ matrix.os }}
+    # no `any` gem: no-fallback means the ext is mandatory (issue #7).
+    # windows-ucrt gems deferred: mingw-vs-MSVC import-lib linking
+    # (tracked in #11).
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            platform: any
-          - os: ubuntu-latest
             platform: x86_64-linux
           - os: ubuntu-24.04-arm
             platform: aarch64-linux
-          - os: windows-latest
-            platform: x64-mingw-ucrt
-          - os: windows-11-arm
-            platform: aarch64-mingw-ucrt
-            ruby-version: '3.4'
           - os: macos-latest
             platform: arm64-darwin
           - os: macos-15-intel
@@ -118,6 +114,9 @@ jobs:
     needs: bump
     if: always() && !cancelled() && !failure()
     runs-on: ${{ matrix.os }}
+    # no `any` gem: no-fallback means the ext is mandatory (issue #7).
+    # windows-ucrt gems deferred: mingw-vs-MSVC import-lib linking
+    # (tracked in #11).
     strategy:
       fail-fast: false
       matrix:
