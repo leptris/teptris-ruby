@@ -142,7 +142,7 @@ jobs:
             -e target_platform="${TARGET_PLATFORM}" \
             ruby:3.3-alpine sh -c '
               set -eux
-              apk add --no-cache build-base bash curl git cmake make gcc g++
+              apk add --no-cache build-base bash curl ca-certificates git cmake make gcc g++
               git config --global --add safe.directory /work
               bundle install --jobs 4 --retry 3
               bundle exec rake gem:native:"'"${TARGET_PLATFORM}"'"

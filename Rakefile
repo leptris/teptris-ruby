@@ -1,9 +1,12 @@
 # frozen_string_literal: true
 
 require "bundler/gem_tasks"
-require "rspec/core/rake_task"
 
-RSpec::Core::RakeTask.new(:spec)
+begin
+  require "rspec/core/rake_task"
+  RSpec::Core::RakeTask.new(:spec)
+rescue LoadError
+end
 
 # Lockstep with the C core; `rake compile` builds this tag from the
 # release tarball (leptris-ruby pattern). Keep in step with
@@ -84,7 +87,11 @@ platforms.each do |platform|
   end
 end
 
-require "rubygems/package_task"
+begin
+  require "rubygems/package_task"
+rescue LoadError
+end
+
 require "rake/clean"
 
 CLOBBER.include("pkg")
