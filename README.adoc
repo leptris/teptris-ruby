@@ -1,0 +1,40 @@
+# teptris-ruby — TOML for Ruby at libleptris speed
+
+An FFI-based (no C extension) Ruby TOML 1.0 library over
+https://github.com/leptris/teptris[libteptris] — the TOML counterpart of
+leptris-ruby (XML) and yeptris-ruby (YAML+JSON). API-shape and value
+semantics mirror the `tomlib` gem: offset and local datetimes become
+`Time`, dates become `Date`, local times stay `String`.
+
+== Install (development)
+
+The gem loads a shared `libteptris` — from `TEPTRIS_LIB_PATH`, a
+vendored `lib/platform/<tag>/` copy, the sibling C checkout's build
+tree, or the system paths. For development against a local build:
+
+....
+cmake -B ../teptris/build -S ../teptris -DCMAKE_BUILD_TYPE=Release -DTEPTRIS_BUILD_SHARED=ON
+cmake --build ../teptris/build
+TEPTRIS_LIB_PATH=../teptris/build/src/libteptris.dylib bundle exec rspec
+....
+
+== Usage
+
+[source,ruby]
+----
+require "teptris"
+
+Teptris::TOML.load("title = \"teptris\"\n[owner]\nname = \"t\"\n")
+# => {"title" => "teptris", "owner" => {"name" => "t"}}
+
+Teptris::TOML.dump({"title" => "teptris", "owner" => {"name" => "t"}})
+
+begin
+  Teptris::TOML.load("a = [1,")
+rescue Teptris::ParseError => e
+  e.line   # 1
+  e.column # 8
+end
+----
+
+Gem publishing and version numbers are USER release decisions.
