@@ -47,16 +47,21 @@ end
 task spec: :compile unless ENV.key?("TEPTRIS_LIB_PATH")
 task default: :spec
 
-desc "Build the pure-Ruby gem"
-task "gem:native:any" do
-  sh "rake platform:any gem"
+# Plain `gem build` on a generated gemspec: no rubygems/package_task
+# dependency (it is not released as a standalone gem).
+def build_gem(spec)
+  mkdir_p "tmp"
+  spec_path = "tmp/#{spec.full_name}.gemspec"
+  File.write(spec_path, spec.to_ruby)
+  sh "gem build #{spec_path}"
+  mkdir_p "pkg"
+  gem_file = "#{spec.full_name}.gem"
+  mv(gem_file, "pkg/") if File.exist?(gem_file)
 end
 
-desc "Define the gem task to build the pure-Ruby gem"
-task "platform:any" do
-  spec = Gem::Specification.load("teptris.gemspec").dup
-  task = Gem::PackageTask.new(spec)
-  task.define
+desc "Build the pure-Ruby gem"
+task "gem:native:any" do
+  build_gem(Gem::Specification.load("teptris.gemspec").dup)
 end
 
 platforms = [
@@ -74,22 +79,12 @@ platforms = [
 platforms.each do |platform|
   desc "Build pre-compiled gem for the #{platform} platform"
   task "gem:native:#{platform}" do
-    sh "rake compile platform:#{platform} gem"
-  end
-
-  desc "Define the gem task to build on the #{platform} platform (binary gem)"
-  task "platform:#{platform}" do
+    Rake::Task["compile"].invoke
     spec = Gem::Specification.load("teptris.gemspec").dup
     spec.platform = Gem::Platform.new(platform)
     spec.files += Dir.glob("lib/libteptris.{dll,so,dylib}")
-    task = Gem::PackageTask.new(spec)
-    task.define
+    build_gem(spec)
   end
-end
-
-begin
-  require "rubygems/package_task"
-rescue LoadError
 end
 
 require "rake/clean"
