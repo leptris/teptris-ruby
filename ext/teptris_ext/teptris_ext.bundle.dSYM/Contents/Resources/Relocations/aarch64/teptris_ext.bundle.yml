@@ -1,0 +1,28 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     teptris_ext.bundle
+relocations:
+  - { offset: 0x1E, size: 0x8, addend: 0x0, symName: _Init_teptris_ext, symObjAddr: 0x0, symBinAddr: 0x2FE0, symSize: 0x1EC }
+  - { offset: 0x3E, size: 0x8, addend: 0x0, symName: _Init_teptris_ext, symObjAddr: 0x0, symBinAddr: 0x2FE0, symSize: 0x1EC }
+  - { offset: 0x5F, size: 0x8, addend: 0x0, symName: __MergedGlobals, symObjAddr: 0x5B10, symBinAddr: 0x8160, symSize: 0x0 }
+  - { offset: 0x74, size: 0x8, addend: 0x0, symName: __MergedGlobals, symObjAddr: 0x5B10, symBinAddr: 0x8160, symSize: 0x0 }
+  - { offset: 0x8B, size: 0x8, addend: 0x0, symName: __MergedGlobals, symObjAddr: 0x5B10, symBinAddr: 0x8160, symSize: 0x0 }
+  - { offset: 0xA2, size: 0x8, addend: 0x0, symName: __MergedGlobals, symObjAddr: 0x5B10, symBinAddr: 0x8160, symSize: 0x0 }
+  - { offset: 0xB9, size: 0x8, addend: 0x0, symName: __MergedGlobals, symObjAddr: 0x5B10, symBinAddr: 0x8160, symSize: 0x0 }
+  - { offset: 0x34D, size: 0x8, addend: 0x0, symName: __MergedGlobals, symObjAddr: 0x5B10, symBinAddr: 0x8160, symSize: 0x0 }
+  - { offset: 0x36F, size: 0x8, addend: 0x0, symName: __MergedGlobals, symObjAddr: 0x5B10, symBinAddr: 0x8160, symSize: 0x0 }
+  - { offset: 0x386, size: 0x8, addend: 0x0, symName: __MergedGlobals, symObjAddr: 0x5B10, symBinAddr: 0x8160, symSize: 0x0 }
+  - { offset: 0x391, size: 0x8, addend: 0x0, symName: _ext_load, symObjAddr: 0x1EC, symBinAddr: 0x31CC, symSize: 0x24C }
+  - { offset: 0x3B6, size: 0x8, addend: 0x0, symName: __MergedGlobals, symObjAddr: 0x5B10, symBinAddr: 0x8160, symSize: 0x0 }
+  - { offset: 0x3CD, size: 0x8, addend: 0x0, symName: __MergedGlobals, symObjAddr: 0x5B10, symBinAddr: 0x8160, symSize: 0x0 }
+  - { offset: 0x3E4, size: 0x8, addend: 0x0, symName: __MergedGlobals, symObjAddr: 0x5B10, symBinAddr: 0x8160, symSize: 0x0 }
+  - { offset: 0x839, size: 0x8, addend: 0x0, symName: _obj_from_node, symObjAddr: 0x490, symBinAddr: 0x3470, symSize: 0x3B8 }
+  - { offset: 0x85E, size: 0x8, addend: 0x0, symName: __MergedGlobals, symObjAddr: 0x5B10, symBinAddr: 0x8160, symSize: 0x0 }
+  - { offset: 0x875, size: 0x8, addend: 0x0, symName: __MergedGlobals, symObjAddr: 0x5B10, symBinAddr: 0x8160, symSize: 0x0 }
+  - { offset: 0x88C, size: 0x8, addend: 0x0, symName: __MergedGlobals, symObjAddr: 0x5B10, symBinAddr: 0x8160, symSize: 0x0 }
+  - { offset: 0x1331, size: 0x8, addend: 0x0, symName: _rb_ull2num_inline, symObjAddr: 0x848, symBinAddr: 0x3828, symSize: 0x18 }
+  - { offset: 0x1380, size: 0x8, addend: 0x0, symName: _dt_string, symObjAddr: 0x860, symBinAddr: 0x3840, symSize: 0x198 }
+  - { offset: 0x13A6, size: 0x8, addend: 0x0, symName: _ext_version, symObjAddr: 0x438, symBinAddr: 0x3418, symSize: 0x14 }
+  - { offset: 0x13E3, size: 0x8, addend: 0x0, symName: _rbimpl_intern_const, symObjAddr: 0x44C, symBinAddr: 0x342C, symSize: 0x44 }
+  - { offset: 0x1A67, size: 0x8, addend: 0x0, symName: _dt_string, symObjAddr: 0x860, symBinAddr: 0x3840, symSize: 0x198 }
+...
