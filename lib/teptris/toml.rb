@@ -1,7 +1,7 @@
 require "date"
 
 require_relative "error"
-require_relative "lib"
+
 require_relative "version"
 
 module Teptris
@@ -12,7 +12,9 @@ module Teptris
   module TOML
     class << self
       def load(toml)
-        parse_and_materialize(toml, 0, nil)
+        raise ArgumentError, "input must be a String" unless toml.is_a?(String)
+
+        TeptrisExt.load(toml)
       end
 
       # Safe-load shaped entry point for frameworks: permitted_classes
@@ -23,18 +25,19 @@ module Teptris
         unless %i[native string].include?(datetime_policy)
           raise ArgumentError, "datetime_policy must be :native or :string"
         end
-        mode = datetime_policy == :string ? 1 : 0
-        permitted = permitted_classes && Set.new(permitted_classes)
-        if permitted && mode.zero?
-          permitted << String # TOML scalars are always materialized
+        opts = {}
+        opts[:string_datetimes] = true if datetime_policy == :string
+        if permitted_classes && datetime_policy == :native
+          permitted = permitted_classes + [:__scalar]
+          opts[:forbid_time] = true unless permitted.include?(Time)
+          opts[:forbid_date] = true unless permitted.include?(Date)
         end
-        parse_and_materialize(toml, mode, permitted)
+        load(toml) if opts.empty?
+        TeptrisExt.load(toml, opts)
       end
 
       # Reserved: fused descriptor materialization, the same descriptor
-      # shape as leptris/yeptris#238 — see docs/DESCRIPTOR_ABI.md. The
-      # entry point exists so frameworks can code against it today; the
-      # fused native pass lands with the co-designed ABI.
+      # shape as leptris/yeptris#238 — see docs/DESCRIPTOR_ABI.md.
       def load_schema(toml, descriptor)
         raise Error,
               "descriptor materialization lands with the co-designed " \
@@ -42,27 +45,8 @@ module Teptris
               "see docs/DESCRIPTOR_ABI.md (descriptor #{descriptor.class})"
       end
 
-      private
-
-      def parse_and_materialize(toml, mode, permitted)
-        raise ArgumentError, "input must be a String" unless toml.is_a?(String)
-
-        data = FFI::MemoryPointer.from_string(toml)
-        docp = FFI::MemoryPointer.new(:pointer)
-        st = Lib.teptris_parse(data, toml.bytesize, nil, docp)
-        handle = docp.read_pointer
-        if st != Teptris::TEPTRIS_OK
-          raise build_parse_error(handle)
-        end
-        begin
-          @mode = mode
-          @permitted = permitted
-          load_flat(handle)
-        ensure
-          @mode = nil
-          @permitted = nil
-          Lib.teptris_document_free(handle)
-        end
+      def engine_version
+        TeptrisExt.engine_version
       end
 
       public
