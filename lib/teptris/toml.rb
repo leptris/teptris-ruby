@@ -12,6 +12,39 @@ module Teptris
   module TOML
     class << self
       def load(toml)
+        parse_and_materialize(toml, 0, nil)
+      end
+
+      # Safe-load shaped entry point for frameworks: permitted_classes
+      # restricts datetime materialization (raise when a value would
+      # materialize an unpermitted class); datetime_policy :string keeps
+      # every datetime kind as its canonical ISO string instead.
+      def safe_load(toml, permitted_classes: nil, datetime_policy: :native)
+        unless %i[native string].include?(datetime_policy)
+          raise ArgumentError, "datetime_policy must be :native or :string"
+        end
+        mode = datetime_policy == :string ? 1 : 0
+        permitted = permitted_classes && Set.new(permitted_classes)
+        if permitted && mode.zero?
+          permitted << String # TOML scalars are always materialized
+        end
+        parse_and_materialize(toml, mode, permitted)
+      end
+
+      # Reserved: fused descriptor materialization, the same descriptor
+      # shape as leptris/yeptris#238 — see docs/DESCRIPTOR_ABI.md. The
+      # entry point exists so frameworks can code against it today; the
+      # fused native pass lands with the co-designed ABI.
+      def load_schema(toml, descriptor)
+        raise Error,
+              "descriptor materialization lands with the co-designed " \
+              "ABI (leptris/yeptris#238); entry point is reserved — " \
+              "see docs/DESCRIPTOR_ABI.md (descriptor #{descriptor.class})"
+      end
+
+      private
+
+      def parse_and_materialize(toml, mode, permitted)
         raise ArgumentError, "input must be a String" unless toml.is_a?(String)
 
         data = FFI::MemoryPointer.from_string(toml)
@@ -22,11 +55,17 @@ module Teptris
           raise build_parse_error(handle)
         end
         begin
+          @mode = mode
+          @permitted = permitted
           load_flat(handle)
         ensure
+          @mode = nil
+          @permitted = nil
           Lib.teptris_document_free(handle)
         end
       end
+
+      public
 
       def load_file(path)
         load(File.read(path))
@@ -133,16 +172,51 @@ module Teptris
       end
 
       def flat_datetime(kind, y, mon, day, hour, min, sec, nsec, off)
+        return flat_datetime_string(kind, y, mon, day, hour, min, sec, nsec, off) if @mode == 1
+
         rational = Rational(sec * 1_000_000_000 + nsec, 1_000_000_000)
         case kind
-        when FLAT_DT then Time.new(y, mon, day, hour, min, rational, off)
-        when FLAT_DT + 1 then Time.local(y, mon, day, hour, min, rational)
-        when FLAT_DT + 2 then Date.new(y, mon, day)
+        when FLAT_DT
+          check_permitted!(Time)
+          Time.new(y, mon, day, hour, min, rational, off)
+        when FLAT_DT + 1
+          check_permitted!(Time)
+          Time.local(y, mon, day, hour, min, rational)
+        when FLAT_DT + 2
+          check_permitted!(Date)
+          Date.new(y, mon, day)
         else
           s = format("%02d:%02d:%02d", hour, min, sec)
           s << "." << format("%09d", nsec).sub(/0+\z/, "") if nsec.positive?
           s
         end
+      end
+
+      def check_permitted!(klass)
+        permitted = @permitted
+        return if permitted.nil? || permitted.include?(klass)
+
+        raise Error,
+              "value materializes #{klass}, which is not in " \
+              "permitted_classes (use datetime_policy: :string to keep " \
+              "datetimes as strings)"
+      end
+
+      def flat_datetime_string(kind, y, mon, day, hour, min, sec, nsec, off)
+        case kind
+        when FLAT_DT + 2 then return format("%04d-%02d-%02d", y, mon, day)
+        when FLAT_DT + 3 then s = +""
+        else s = +(format("%04d-%02d-%02dT", y, mon, day))
+        end
+        s << format("%02d:%02d:%02d", hour, min, sec)
+        if nsec.positive?
+          s << "." << format("%09d", nsec).sub(/0+\z/, "")
+        end
+        case kind
+        when FLAT_DT
+          off.zero? ? s << "Z" : s << format("%+03d:%02d", off / 3600, (off % 3600).abs / 60)
+        end
+        s
       end
 
       # ---- dump -----------------------------------------------------------
