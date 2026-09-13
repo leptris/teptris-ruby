@@ -35,11 +35,14 @@ task :compile do
     sh "curl -sL #{url} | tar xz -C #{build} --strip-components=1"
     sh "cmake -B #{build} -S #{build} #{CMAKE_FLAGS.join(' ')}"
   end
-  sh "cmake --build #{build} -j"
+  sh "cmake --build #{build} --config Release -j"
 
   # Pick the produced shared library for this platform into lib/.
-  lib = Dir.glob("#{build}/src/libteptris.{dylib,so,dll}").first
-  raise "libteptris shared library not found in #{build}/src" unless lib
+  # MSVC multi-config puts it in src/Release/ and names it teptris.dll
+  # (no lib prefix); single-config generators emit src/libteptris.*.
+  lib = Dir.glob("#{build}/src/**/libteptris.{dylib,so,dll}").first ||
+        Dir.glob("#{build}/src/**/teptris.dll").first
+  raise "libteptris shared library not found under #{build}/src" unless lib
 
   cp(lib, "lib/")
 end
@@ -82,7 +85,7 @@ platforms.each do |platform|
     Rake::Task["compile"].invoke
     spec = Gem::Specification.load("teptris.gemspec").dup
     spec.platform = Gem::Platform.new(platform)
-    spec.files += Dir.glob("lib/libteptris.{dll,so,dylib}")
+    spec.files += Dir.glob("lib/{libteptris,teptris}.{dll,so,dylib}")
     build_gem(spec)
   end
 end
