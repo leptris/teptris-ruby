@@ -9,6 +9,12 @@ inc = with_config("teptris-include") || ENV["TEPTRIS_INCLUDE"] ||
       File.expand_path("../../../teptris/src/include", __dir__)
 abort "teptris headers not found (#{inc})" unless File.file?(File.join(inc, "teptris/teptris.h"))
 $INCFLAGS << " -I#{inc}"
+# Never link libruby: symbols resolve from the running Ruby process.
+# (macOS: dynamic_lookup; ELF shared objects allow undefined syms.)
+$LIBS = $LIBS.sub("-lruby", "")
+if RUBY_PLATFORM =~ /darwin/
+  $DLDFLAGS << " -Wl,-undefined,dynamic_lookup"
+end
 # The dylib's install name is @rpath/libteptris.0.dylib; the bundle sits
 # beside it in the gem's lib/ → @loader_path resolves without env vars.
 if implib && Dir.glob("#{libdir}/libteptris*.dll").empty?
