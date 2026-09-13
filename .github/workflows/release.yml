@@ -84,15 +84,15 @@ jobs:
         include:
           # Windows: ucrt rubies bind x64-ucrt-rubyNNN.dll per minor, so
           # each cell builds ONE minor's extension; assemble-windows packs
-          # them into a fat gem (nokogiri layout).
-          - { os: windows-latest,  platform: x64-mingw-ucrt,    ruby-version: '3.1' }
-          - { os: windows-latest,  platform: x64-mingw-ucrt,    ruby-version: '3.2' }
-          - { os: windows-latest,  platform: x64-mingw-ucrt,    ruby-version: '3.3' }
-          - { os: windows-latest,  platform: x64-mingw-ucrt,    ruby-version: '3.4' }
-          - { os: windows-11-arm,  platform: aarch64-mingw-ucrt, ruby-version: '3.1' }
-          - { os: windows-11-arm,  platform: aarch64-mingw-ucrt, ruby-version: '3.2' }
-          - { os: windows-11-arm,  platform: aarch64-mingw-ucrt, ruby-version: '3.3' }
+          # them into a fat gem (nokogiri layout). RubyInstaller ARM64
+          # builds exist only for 3.4 and 4.0.
+          - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby-version: '3.1' }
+          - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby-version: '3.2' }
+          - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby-version: '3.3' }
+          - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby-version: '3.4' }
+          - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby-version: '4.0' }
           - { os: windows-11-arm,  platform: aarch64-mingw-ucrt, ruby-version: '3.4' }
+          - { os: windows-11-arm,  platform: aarch64-mingw-ucrt, ruby-version: '4.0' }
           - { os: ubuntu-latest,   platform: x86_64-linux }
           - { os: ubuntu-24.04-arm, platform: aarch64-linux }
           - { os: macos-latest,    platform: arm64-darwin }
@@ -148,8 +148,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { platform: x64-mingw-ucrt,     minors: "3.1 3.2 3.3 3.4" }
-          - { platform: aarch64-mingw-ucrt, minors: "3.1 3.2 3.3 3.4" }
+          - { platform: x64-mingw-ucrt,     minors: "3.1 3.2 3.3 3.4 4.0" }
+          - { platform: aarch64-mingw-ucrt, minors: "3.4 4.0" }
     steps:
       - uses: actions/checkout@v4
         with:
