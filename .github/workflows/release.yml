@@ -109,7 +109,11 @@ jobs:
           ruby-version: ${{ matrix.ruby-version || '3.3' }}
           bundler-cache: true
 
-      - run: rake gem:native:${{ matrix.platform }}
+      - run: |
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            command -v ninja >/dev/null 2>&1 || choco install -y ninja
+          fi
+          rake gem:native:${{ matrix.platform }}
         shell: bash
 
       - uses: actions/upload-artifact@v4
