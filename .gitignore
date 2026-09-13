@@ -3,3 +3,8 @@ tmp/
 Gemfile.lock
 .bundle/
 lib/libteptris.dylib
+Makefile
+*.o
+*.bundle
+*.bundle.dSYM/
+ext/teptris_ext/Makefile
