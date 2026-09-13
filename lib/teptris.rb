@@ -1,3 +1,5 @@
+require "set"
+
 require_relative "teptris/version"
 require_relative "teptris/error"
 require_relative "teptris/lib"
