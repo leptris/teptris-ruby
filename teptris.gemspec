@@ -11,8 +11,7 @@ Gem::Specification.new do |spec|
   spec.homepage = "https://github.com/leptris/teptris-ruby"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.0"
-  spec.files = Dir["lib/**/*.rb"]
+  spec.files = Dir["lib/**/*.rb"] + Dir["lib/teptris_ext.*"]
   spec.bindir = "bin"
   spec.executables = []
-  spec.add_dependency "ffi", "~> 1.15"
 end
