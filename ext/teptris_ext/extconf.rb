@@ -23,3 +23,14 @@ else
   $LDFLAGS << " -L#{libdir} -lteptris -Wl,-rpath,@loader_path"
 end
 create_makefile "teptris_ext"
+
+# mkmf buries the absolute builder libruby path in librubyarg_shared;
+# strip it from the generated Makefile — Ruby symbols come from the
+# running process (dynamic_lookup on macOS, undefined-allowed on ELF).
+makefile = File.read("Makefile")
+libruby = CONFIG["librubyarg_shared"].to_s
+if libruby != ""
+  makefile.gsub!(Regexp.new(Regexp.escape(libruby)), "")
+end
+makefile.gsub!(/(^|\s)-l\w*ruby\w*/, "")
+File.write("Makefile", makefile)
