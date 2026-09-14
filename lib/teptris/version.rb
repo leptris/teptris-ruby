@@ -1,3 +1,3 @@
 module Teptris
-  VERSION = "0.2.12"
+  VERSION = "0.2.13"
 end
