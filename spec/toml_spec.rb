@@ -92,6 +92,63 @@ RSpec.describe Teptris::TOML do
     end
   end
 
+  describe "TOML 1.1 grammar" do
+    it 'parses \e and \xNN escapes' do
+      doc = described_class.load(<<~'TOML')
+        esc = "A\eB"
+        hex = "\x68\x69"
+      TOML
+      expect(doc["esc"]).to eq("A\x1BB")
+      expect(doc["hex"]).to eq("hi")
+    end
+
+    it "parses optional seconds in times and datetimes" do
+      doc = described_class.load(%{t = 07:32\ndt = 1979-05-27T07:32\noff = 1979-05-27 07:32Z\n})
+      expect(doc["t"]).to eq("07:32:00")
+      expect(doc["dt"]).to eq(Time.local(1979, 5, 27, 7, 32))
+      expect(doc["off"].utc).to eq(Time.utc(1979, 5, 27, 7, 32))
+    end
+
+    it "accepts newlines and trailing commas in inline tables" do
+      doc = described_class.load(<<~TOML)
+        it = {
+          a = 1,
+          b = 2,
+        }
+        single = { x = 1, }
+      TOML
+      expect(doc["it"]).to eq("a" => 1, "b" => 2)
+      expect(doc["single"]).to eq("x" => 1)
+    end
+
+    it "defines sub-tables within dotted-key tables via headers" do
+      doc = described_class.load(<<~TOML)
+        [fruit]
+        apple.color = "red"
+        apple.taste.sweet = true
+
+        [fruit.apple.texture]
+        smooth = true
+
+        [[fruit.apple.seeds]]
+        size = 2
+      TOML
+      expect(doc.dig("fruit", "apple", "texture")).to eq("smooth" => true)
+      expect(doc.dig("fruit", "apple", "seeds")).to eq(["size" => 2])
+    end
+
+    it "still rejects exact dotted-table redefinition" do
+      expect { described_class.load(<<~TOML) }
+        [fruit]
+        apple.color = "red"
+
+        [fruit.apple]
+        x = 1
+      TOML
+        .to raise_error(Teptris::ParseError)
+    end
+  end
+
   describe "parity with tomlib", if: defined?(Tomlib) do
     cases = [
       "a = 1\nb = -2\nc = 0xFF\n",
