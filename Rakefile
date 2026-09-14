@@ -11,7 +11,7 @@ end
 # Lockstep with the C core; `rake compile` builds this tag from the
 # release tarball (leptris-ruby pattern). Keep in step with
 # .github/workflows/release.yml and the CHANGELOG.
-LIBTEPTRIS_VERSION = "0.1.6"
+LIBTEPTRIS_VERSION = "0.1.7"
 
 CMAKE_FLAGS = %w[
   -DCMAKE_BUILD_TYPE=Release
