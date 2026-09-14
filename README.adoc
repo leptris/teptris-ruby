@@ -1,6 +1,6 @@
 # teptris-ruby — TOML for Ruby at libleptris speed
 
-A native C-extension (no FFI, no fallback) Ruby TOML 1.0 library over
+A native C-extension (no FFI, no fallback) Ruby TOML library over the
 https://github.com/leptris/teptris[libteptris] — the TOML counterpart of
 leptris-ruby (XML) and yeptris-ruby (YAML+JSON). API-shape and value
 semantics mirror the `tomlib` gem: offset and local datetimes become
@@ -20,11 +20,20 @@ TEPTRIS_LIB_PATH=../teptris/build/src/libteptris.dylib bundle exec rspec
 
 == Performance
 
-0.2.0 materializes natively (a C extension over libteptris; no FFI
-fallback): **1.6×–124× faster than tomlib on every corpus shape**
-(e.g. mixed 3.4×, array-heavy 5.0×, deep-tables 1.6×, scalar shapes
-100×+ where tomlib degrades quadratically), and 50–380× toml-rb.
-Full matrix: teptris `benchmarks/LEDGER.md` and `benchmark/lang_tier.rb`.
+Both directions are native (C extensions over libteptris; no FFI, no
+fallback):
+
+- **load**: 1.6×–124× faster than tomlib on every corpus shape (mixed
+  3.4×, array-heavy 5.0×, scalar shapes 100×+ where tomlib degrades
+  quadratically); 50–380× toml-rb; GC allocations at parity.
+- **dump**: 3×–10× faster than tomlib on every shape (through the C
+  builder API — the engine emitter is the single formatting source).
+
+The engine implements the TOML 1.1 draft grammar (a strict superset of
+1.0: `\e`/`\xNN` escapes, optional seconds, inline-table newlines and
+trailing commas) with 100% toml-test conformance, and parses at ≥3×
+the best C/C++ competitor on every benchmark shape.
+Full matrix: teptris `benchmarks/LEDGER.md`.
 
 == Usage
 
