@@ -9,6 +9,38 @@
 
 static VALUE eParseError, eError, cDate;
 
+/* civil date -> days since epoch (Hinnant, inverse of the dump side) */
+static int64_t days_from_civil(int32_t y, uint8_t m, uint8_t d) {
+    y -= m <= 2;
+    int64_t era = (y >= 0 ? y : y - 399) / 400;
+    uint32_t yoe = (uint32_t)(y - era * 400);
+    uint32_t doy = (uint32_t)(153 * (m > 2 ? m - 3 : m + 9) + 2) / 5 + d - 1;
+    uint32_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + (int64_t)doe - 719468;
+}
+
+/* exact (no double) Time materialization: nsec stays nsec. Offset
+ * datetimes go through timespec+fixed-offset; local datetimes through
+ * Time.local with Rational seconds (rb_time_timespec_new's INT_MAX
+ * treats the timespec as an absolute instant, not wall-clock local). */
+static VALUE time_from_dt(const teptris_datetime *d, bool has_offset) {
+    if (has_offset) {
+        int64_t days = days_from_civil(d->year, d->month, d->day);
+        int64_t secs =
+            days * 86400 + d->hour * 3600 + d->minute * 60 + d->second;
+        struct timespec ts;
+        ts.tv_sec = (time_t)(secs - d->offset_seconds);
+        ts.tv_nsec = (long)d->nanosecond;
+        return rb_time_timespec_new(&ts, d->offset_seconds);
+    }
+    VALUE args[6] = {INT2FIX(d->year), INT2FIX(d->month), INT2FIX(d->day),
+                     INT2FIX(d->hour), INT2FIX(d->minute),
+                     rb_Rational(LL2NUM((int64_t)d->second * 1000000000 +
+                                        d->nanosecond),
+                                 LL2NUM(1000000000))};
+    return rb_funcallv(rb_cTime, rb_intern("local"), 6, args);
+}
+
 static VALUE dt_string(const teptris_datetime *d, int kind) {
     char buf[48];
     int l;
@@ -83,14 +115,7 @@ static VALUE obj_from_node(const teptris_node *n, unsigned flags) {
             if (flags & FMT_FORBID_TIME)
                 rb_raise(eError, "value materializes Time, which is not in "
                                  "permitted_classes (use datetime_policy: :string)");
-            double sec = (double)d.second + (double)d.nanosecond / 1e9;
-            VALUE args[7] = { INT2FIX(d.year), INT2FIX(d.month), INT2FIX(d.day),
-                              INT2FIX(d.hour), INT2FIX(d.minute), DBL2NUM(sec) };
-            if (kind == TEPTRIS_DATETIME_OFFSET) {
-                args[6] = INT2FIX(d.offset_seconds);
-                return rb_funcallv(rb_cTime, rb_intern("new"), 7, args);
-            }
-            return rb_funcallv(rb_cTime, rb_intern("local"), 6, args);
+            return time_from_dt(&d, kind == TEPTRIS_DATETIME_OFFSET);
         }
         if (kind == TEPTRIS_DATE_LOCAL) {
             if (flags & FMT_FORBID_DATE)
@@ -140,9 +165,173 @@ static VALUE ext_version(VALUE self) {
     return rb_str_new_cstr(teptris_version_string());
 }
 
+/* ------------------------------------------------------------------ dump */
+
+static ID id_utc_offset, id_to_s;
+
+static void dump_check(teptris_status st) {
+    if (st == TEPTRIS_OK) return;
+    if (st == TEPTRIS_ERR_ALLOC)
+        rb_raise(eError, "out of memory while dumping");
+    rb_raise(eError, "cannot dump value (%s)", teptris_status_string(st));
+}
+
+/* days since 1970-01-01 -> proleptic-Gregorian y/m/d (Hinnant) */
+static void civil_from_days(int64_t z, int32_t *y, uint8_t *m, uint8_t *d) {
+    z += 719468;
+    int64_t era = (z >= 0 ? z : z - 146096) / 146097;
+    uint32_t doe = (uint32_t)(z - era * 146097);
+    uint32_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    int64_t yy = (int64_t)yoe + era * 400;
+    uint32_t doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    uint32_t mp = (5 * doy + 2) / 153;
+    uint32_t dd = doy - (153 * mp + 2) / 5 + 1;
+    uint32_t mm = mp < 10 ? mp + 3 : mp - 9;
+    if (mm <= 2) yy++;
+    *y = (int32_t)yy;
+    *m = (uint8_t)mm;
+    *d = (uint8_t)dd;
+}
+
+/* two crossings per Time: timespec + utc_offset; the civil fields come
+ * from integer math (epoch + offset -> y/m/d h:m:s + tv_nsec) */
+static void fill_dt_from_time(VALUE v, teptris_datetime *dt) {
+    struct timespec ts = rb_time_timespec(v);
+    dt->offset_seconds = NUM2INT(rb_funcall(v, id_utc_offset, 0));
+    int64_t secs = (int64_t)ts.tv_sec + dt->offset_seconds;
+    int64_t days = secs / 86400;
+    int32_t rem = (int32_t)(secs % 86400);
+    if (rem < 0) { /* floor division: keep rem in [0, 86400) */
+        rem += 86400;
+        days -= 1;
+    }
+    civil_from_days(days, &dt->year, &dt->month, &dt->day);
+    dt->hour = (uint8_t)(rem / 3600);
+    dt->minute = (uint8_t)((rem / 60) % 60);
+    dt->second = (uint8_t)(rem % 60);
+    dt->nanosecond = (uint32_t)ts.tv_nsec;
+}
+
+static void dump_scalar(teptris_builder *b, const char *key, size_t klen,
+                        VALUE v) {
+    switch (TYPE(v)) {
+    case T_STRING:
+        dump_check(teptris_builder_put_string(b, key, klen, RSTRING_PTR(v),
+                                              (size_t)RSTRING_LEN(v)));
+        return;
+    case T_TRUE:
+    case T_FALSE:
+        dump_check(teptris_builder_put_boolean(b, key, klen, RTEST(v)));
+        return;
+    case T_FIXNUM: /* T_INTEGER on 3.2+; T_FIXNUM spans every ruby we build */
+    case T_BIGNUM: /* NUM2LL raises RangeError outside int64 */
+        dump_check(teptris_builder_put_integer(b, key, klen, NUM2LL(v)));
+        return;
+    case T_FLOAT:
+        dump_check(teptris_builder_put_float(b, key, klen, RFLOAT_VALUE(v)));
+        return;
+    default:
+        if (rb_obj_is_kind_of(v, rb_cTime)) {
+            teptris_datetime dt = {0};
+            fill_dt_from_time(v, &dt);
+            dump_check(teptris_builder_put_datetime(
+                b, key, klen, TEPTRIS_DATETIME_OFFSET, &dt));
+            return;
+        }
+        if (rb_obj_is_kind_of(v, cDate)) {
+            /* DateTime is a Date subclass: dumps its date part, as the
+             * Ruby-era dump writers did. One crossing: jd -> civil. */
+            teptris_datetime dt = {0};
+            int64_t jd = NUM2LL(rb_funcall(v, rb_intern("jd"), 0));
+            civil_from_days(jd - 2440588, &dt.year, &dt.month, &dt.day);
+            dump_check(teptris_builder_put_datetime(b, key, klen,
+                                                    TEPTRIS_DATE_LOCAL, &dt));
+            return;
+        }
+        rb_raise(eError, "cannot dump %s", rb_obj_classname(v));
+    }
+}
+
+static void build_value(teptris_builder *b, VALUE v);
+
+static int table_each(VALUE key, VALUE val, VALUE data) {
+    teptris_builder *b = (teptris_builder *)data;
+    if (!RB_TYPE_P(key, T_STRING))
+        key = rb_funcall(key, id_to_s, 0);
+    const char *kp = RSTRING_PTR(key);
+    size_t kl = (size_t)RSTRING_LEN(key);
+    if (RB_TYPE_P(val, T_HASH)) {
+        dump_check(teptris_builder_open_table(b, kp, kl));
+        rb_hash_foreach(val, table_each, (VALUE)b);
+        dump_check(teptris_builder_close(b));
+    } else if (RB_TYPE_P(val, T_ARRAY)) {
+        long n = RARRAY_LEN(val);
+        bool all_hash = n > 0;
+        for (long i = 0; i < n; i++) {
+            if (!RB_TYPE_P(RARRAY_AREF(val, i), T_HASH)) {
+                all_hash = false;
+                break;
+            }
+        }
+        dump_check(all_hash ? teptris_builder_open_array(b, kp, kl)
+                            : teptris_builder_open_inline_array(b, kp, kl));
+        for (long i = 0; i < n; i++)
+            build_value(b, RARRAY_AREF(val, i));
+        dump_check(teptris_builder_close(b));
+    } else {
+        dump_scalar(b, kp, kl, val);
+    }
+    return ST_CONTINUE;
+}
+
+/* element position: no key */
+static void build_value(teptris_builder *b, VALUE v) {
+    if (RB_TYPE_P(v, T_HASH)) {
+        dump_check(teptris_builder_open_table(b, NULL, 0));
+        rb_hash_foreach(v, table_each, (VALUE)b);
+        dump_check(teptris_builder_close(b));
+    } else if (RB_TYPE_P(v, T_ARRAY)) {
+        long n = RARRAY_LEN(v);
+        /* element arrays are inline territory: the builder pins them */
+        dump_check(teptris_builder_open_array(b, NULL, 0));
+        for (long i = 0; i < n; i++)
+            build_value(b, RARRAY_AREF(v, i));
+        dump_check(teptris_builder_close(b));
+    } else {
+        dump_scalar(b, NULL, 0, v);
+    }
+}
+
+static VALUE ext_dump(VALUE self, VALUE obj) {
+    if (!RB_TYPE_P(obj, T_HASH))
+        rb_raise(rb_eArgError, "cannot dump %s (root must be a Hash)",
+                 rb_obj_classname(obj));
+    teptris_builder *b = teptris_builder_new();
+    if (b == NULL)
+        rb_raise(eError, "out of memory while dumping");
+    rb_hash_foreach(obj, table_each, (VALUE)b);
+    teptris_document *doc = NULL;
+    teptris_status st = teptris_builder_finish(b, &doc);
+    if (st != TEPTRIS_OK) {
+        teptris_builder_free(b);
+        rb_raise(eError, "cannot dump (%s)", teptris_status_string(st));
+    }
+    char *buf = NULL;
+    size_t len = 0;
+    st = teptris_document_emit(doc, &buf, &len);
+    teptris_document_free(doc);
+    teptris_builder_free(b); /* doc already transferred/freed */
+    if (st != TEPTRIS_OK)
+        rb_raise(eError, "dump failed (%s)", teptris_status_string(st));
+    VALUE out = rb_enc_str_new(buf, (long)len, rb_utf8_encoding());
+    free(buf);
+    return out;
+}
+
 void Init_teptris_ext(void) {
     VALUE m = rb_define_module("TeptrisExt");
     rb_define_module_function(m, "load", ext_load, -1);
+    rb_define_module_function(m, "dump", ext_dump, 1);
     rb_define_module_function(m, "engine_version", ext_version, 0);
     /* error/version load first (teptris.rb), then the ext bundle */
     VALUE t = rb_const_get(rb_cObject, rb_intern("Teptris"));
@@ -150,4 +339,6 @@ void Init_teptris_ext(void) {
     eParseError = rb_const_get(t, rb_intern("ParseError"));
     rb_funcall(rb_mKernel, rb_intern("require"), 1, rb_str_new_cstr("date"));
     cDate = rb_const_get(rb_cObject, rb_intern("Date"));
+    id_utc_offset = rb_intern("utc_offset");
+    id_to_s = rb_intern("to_s");
 }

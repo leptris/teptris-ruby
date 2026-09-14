@@ -58,6 +58,40 @@ RSpec.describe Teptris::TOML do
       .to eq("at = 2026-09-13T08:00:00Z\non = 2026-09-13\n")
   end
 
+  it "dumps datetimes across zones, eras, and leap days" do
+    obj = {"jan" => Time.new(2026, 1, 2, 3, 4, 5, "-08:00"),
+           "pre_epoch" => Time.utc(1969, 12, 31, 23, 59, 59),
+           "frac" => Time.new(2026, 9, 13, 10, 30, 15.5, "+05:30"),
+           "leap" => Time.utc(2000, 2, 29, 12, 0, 0),
+           "local" => Time.local(2026, 6, 15, 1, 2, 3.25)}
+    described_class.load(described_class.dump(obj)).each do |k, v|
+      expect(v).to be_within(1e-6).of(obj[k])
+    end
+  end
+
+  it "dumps mixed arrays as inline and homogeneous table arrays as sections" do
+    obj = {"mix" => [{"q" => 1}, 2], "nested" => [[1, 2], [3]], "aot" => [{"n" => 1}]}
+    toml = described_class.dump(obj)
+    expect(toml).to include("mix = [{q = 1}, 2]")
+    expect(toml).to include("nested = [[1, 2], [3]]")
+    expect(toml).to include("[[aot]]\nn = 1")
+    expect(described_class.load(toml)).to eq(obj)
+  end
+
+  it "rejects undumpable roots, values, and out-of-range integers" do
+    expect { described_class.dump([1]) }.to raise_error(ArgumentError)
+    expect { described_class.dump({"x" => Object.new}) }.to raise_error(Teptris::Error)
+    expect { described_class.dump({"x" => 2**70}) }.to raise_error(RangeError)
+  end
+
+  it "roundtrips the whole bench corpus through the native dump" do
+    corpus = File.expand_path("../../teptris/bench-corpus", __dir__)
+    Dir[File.join(corpus, "*.toml")].sort.each do |path|
+      obj = described_class.load(File.read(path))
+      expect(described_class.load(described_class.dump(obj))).to eq(obj)
+    end
+  end
+
   describe "parity with tomlib", if: defined?(Tomlib) do
     cases = [
       "a = 1\nb = -2\nc = 0xFF\n",
