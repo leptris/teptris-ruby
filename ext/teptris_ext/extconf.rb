@@ -1,10 +1,12 @@
 require "mkmf"
 libdir = with_config("teptris-libdir") || ENV["TEPTRIS_LIBDIR"] ||
          File.dirname(ENV["TEPTRIS_LIB_PATH"].to_s)
-dll = Dir.glob("#{libdir}/**/teptris.dll").first # MSVC: src/Release/teptris.dll
-implib = Dir.glob("#{libdir}/**/teptris.lib").first
-found = Dir.glob("#{libdir}/libteptris*.{dylib,so,dll}").any? || dll
-abort "libteptris shared library not found under #{libdir}" unless found
+# The extension statically links libteptris: one self-contained
+# teptris_ext artifact per platform, no soname/rpath/dylib-chain
+# distribution to get wrong (issue #38 — 0.2.17's linux/mingw gems
+# shipped the ext without the libteptris.so.0 soname it linked).
+archive = Dir.glob("#{libdir}/libteptris*.a").first
+abort "libteptris static archive not found under #{libdir}" unless archive
 inc = with_config("teptris-include") || ENV["TEPTRIS_INCLUDE"] ||
       File.expand_path("../../../teptris/src/include", __dir__)
 abort "teptris headers not found (#{inc})" unless File.file?(File.join(inc, "teptris/teptris.h"))
@@ -20,15 +22,8 @@ end
 if RUBY_PLATFORM =~ /darwin/
   $DLDFLAGS << " -Wl,-undefined,dynamic_lookup"
 end
-# The dylib's install name is @rpath/libteptris.0.dylib; the bundle sits
-# beside it in the gem's lib/ → @loader_path resolves without env vars.
-if implib && Dir.glob("#{libdir}/libteptris*.dll").empty?
-  $LDFLAGS << " #{implib}" # mingw ld links MSVC import libraries
-elsif win
-  $LDFLAGS << " -L#{libdir} -lteptris" # PE has no rpath; DLL sits beside the .so
-else
-  $LDFLAGS << " -L#{libdir} -lteptris -Wl,-rpath,@loader_path"
-end
+# Link the whole archive: every teptris symbol lands inside the ext.
+$LDFLAGS << " #{archive}"
 create_makefile "teptris_ext"
 
 # mkmf buries the absolute builder libruby path in librubyarg_shared;

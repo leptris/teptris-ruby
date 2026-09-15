@@ -13,12 +13,15 @@ end
 # .github/workflows/release.yml and the CHANGELOG.
 LIBTEPTRIS_VERSION = "0.1.12"
 
+# LTO off: bitcode in the static archive breaks mkmf's link step
+# (llvm 'unsupported stack probing method' on the ext link)
 CMAKE_FLAGS = %w[
   -DCMAKE_BUILD_TYPE=Release
-  -DTEPTRIS_BUILD_SHARED=ON
-  -DTEPTRIS_BUILD_STATIC=OFF
+  -DTEPTRIS_BUILD_SHARED=OFF
+  -DTEPTRIS_BUILD_STATIC=ON
   -DBUILD_TESTING=OFF
   -DTEPTRIS_BUILD_CLI=OFF
+  -DTEPTRIS_ENABLE_LTO=OFF
 ].freeze
 
 desc "Build libteptris + the native extension into lib/"
@@ -28,9 +31,10 @@ task :compile do
   build = File.expand_path("tmp/libteptris-#{version}", __dir__)
   rm_rf(build)
   mkdir_p(build)
-  # On Windows the ext compiles under Ruby's mingw toolchain; build the
-  # C core with the SAME toolchain so -L/-l links natively (MSVC-built
-  # DLLs need import-lib gymnastics — issue #15).
+  # The C core links STATICALLY into the extension (issue #38): one
+  # self-contained teptris_ext per platform — no soname, no rpath, no
+  # dylib chain to distribute. On Windows the ext compiles under
+  # Ruby's mingw toolchain; build the archive with the SAME toolchain.
   win = RUBY_PLATFORM =~ /mingw/
   toolchain = []
   if win
@@ -71,10 +75,7 @@ task :compile do
     end
   end
 
-  # the dylib chain the bundle links (@loader_path rpath)
-  Dir.glob("#{libdir}/libteptris*").each { |f| cp(f, "lib/") unless f.end_with?(".a") || f.end_with?(".dll.a") }
-  Dir.glob("#{libdir}/**/teptris.dll").each { |f| cp(f, "lib/") }
-  Dir.glob("#{libdir}/libteptris.dll").each { |f| cp(f, "lib/") }
+  # nothing else to ship: libteptris lives inside teptris_ext
 end
 
 task spec: :compile unless ENV.key?("TEPTRIS_LIB_PATH")
@@ -118,14 +119,9 @@ platforms.each do |platform|
     natives = Dir.glob("lib/teptris_ext.{so,bundle,dll}") +
               Dir.glob("lib/teptris/*/teptris_ext.so")
     abort "no native extension under lib/ for #{platform} — run rake compile first" if natives.empty?
-    if mingw && Dir.glob("lib/*.dll").empty?
-      abort "no libteptris.dll under lib/ for #{platform}"
-    end
     spec = Gem::Specification.load("teptris.gemspec").dup
     spec.platform = Gem::Platform.new(platform)
-    spec.files += natives +
-                  Dir.glob("lib/libteptris*.{dylib,so,dll}") +
-                  Dir.glob("lib/*.dll")
+    spec.files += natives
     build_gem(spec)
   end
 
