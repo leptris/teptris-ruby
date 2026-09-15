@@ -8,7 +8,9 @@ RSpec.describe "launch checklist (leptris/teptris-ruby#3)" do
       'require "teptris"; '       'foreign = Object.constants.grep(/Tomlib|Tomlrb|Psych/); '       'print({ teptris: Object.const_defined?(:Teptris), foreign: foreign }.inspect)'],
       &:read)
     expect($?.success?).to be(true)
-    expect(out).to eq('{teptris: true, foreign: []}')
+    # Hash#inspect spelling differs across ruby minors (3.3: {:a=>1},
+    # 3.4+: {a: 1}) — parse the subprocess's own output instead
+    expect(eval(out)).to eq(teptris: true, foreign: [])
   end
 
   describe "safe_load" do
