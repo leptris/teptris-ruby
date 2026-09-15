@@ -11,7 +11,7 @@ end
 # Lockstep with the C core; `rake compile` builds this tag from the
 # release tarball (leptris-ruby pattern). Keep in step with
 # .github/workflows/release.yml and the CHANGELOG.
-LIBTEPTRIS_VERSION = "0.1.12"
+LIBTEPTRIS_VERSION = "0.1.13"
 
 # LTO off: bitcode in the static archive breaks mkmf's link step
 # (llvm 'unsupported stack probing method' on the ext link)
@@ -45,16 +45,28 @@ task :compile do
     toolchain = ["-G Ninja", "-DCMAKE_C_COMPILER=#{cc}"]
   end
   if src
-    sh "cmake -B #{build} -S #{src} #{(CMAKE_FLAGS + toolchain).join(' ')}"
-    inc = File.expand_path("src/include", src)
+    cmake_src = File.expand_path(src)
   else
     url = "https://api.github.com/repos/leptris/teptris/tarball/v#{version}"
     sh "curl -sL #{url} | tar xz -C #{build} --strip-components=1"
-    sh "cmake -B #{build} -S #{build} #{(CMAKE_FLAGS + toolchain).join(' ')}"
-    inc = File.join(build, "src/include")
+    cmake_src = build
   end
-  sh "cmake --build #{build} --config Release -j"
+  inc = File.join(cmake_src, "src/include")
   libdir = File.join(build, "src")
+
+  # PGO two-stage (C core: scripts/build-pgo.sh): -fprofile-generate
+  # build, train via `teptris format` over a generated corpus, then a
+  # -fprofile-use rebuild. Measured +3-13% on the parse shapes
+  # (benchmarks/LEDGER.md in the C repo). TEPTRIS_PGO=0 escapes to the
+  # plain single-stage build (no python3, MSVC toolchains, debugging).
+  if ENV["TEPTRIS_PGO"] != "0" && File.file?(File.join(cmake_src, "scripts/build-pgo.sh"))
+    corpus = File.join(build, "bench-corpus")
+    sh "python3 #{File.join(cmake_src, "scripts/gen_bench_corpus.py")} #{corpus}"
+    sh ["bash", File.join(cmake_src, "scripts/build-pgo.sh"), cmake_src, build, corpus, toolchain].join(" ")
+  else
+    sh "cmake -B #{build} -S #{cmake_src} #{(CMAKE_FLAGS + toolchain).join(' ')}"
+    sh "cmake --build #{build} --config Release -j"
+  end
 
   extdir = File.expand_path("ext/teptris_ext", __dir__)
   Dir.chdir(extdir) do
