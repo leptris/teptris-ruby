@@ -210,7 +210,7 @@ jobs:
             -e target_platform="${TARGET_PLATFORM}" \
             ruby:3.3-alpine sh -c '
               set -eux
-              # python3: rake compile's PGO stage generates the training corpus
+              # python3: the PGO stage generates the training corpus
               apk add --no-cache build-base bash curl ca-certificates git cmake make gcc g++ python3
               git config --global --add safe.directory /work
               bundle install --jobs 4 --retry 3
