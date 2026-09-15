@@ -162,7 +162,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: winext-${{ matrix.platform }}-*
-          path: lib
+          path: lib/teptris
           merge-multiple: true
 
       - name: Verify every ruby minor made it
