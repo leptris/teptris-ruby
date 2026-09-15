@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  compile-and-spec:
+    name: ${{ matrix.os }} ruby ${{ matrix.ruby-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # one cell per PGO flavor + platform family: clang (darwin),
+        # gcc ELF (ubuntu x64/arm), gcc mingw (windows x64/arm)
+        include:
+          - { os: macos-latest,      ruby-version: '3.3' }
+          - { os: macos-15-intel,    ruby-version: '3.3' }
+          - { os: ubuntu-latest,     ruby-version: '3.3' }
+          - { os: ubuntu-24.04-arm,  ruby-version: '3.3' }
+          - { os: windows-latest,    ruby-version: '3.4' }
+          - { os: windows-11-arm,    ruby-version: '3.4' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$GITHUB_ENV"
+        if: runner.os == 'macOS'
+
+      - uses: ruby/setup-ruby@master
+        with:
+          ruby-version: ${{ matrix.ruby-version }}
+          bundler-cache: true
+
+      - name: Compile (two-stage PGO) + specs
+        shell: bash
+        run: |
+          if ! command -v ninja >/dev/null 2>&1 && command -v choco >/dev/null 2>&1; then
+            choco install -y ninja
+          fi
+          rake compile
+          bundle exec rspec --format progress
