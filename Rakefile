@@ -22,7 +22,6 @@ CMAKE_FLAGS = %w[
   -DBUILD_TESTING=OFF
   -DTEPTRIS_BUILD_CLI=OFF
   -DTEPTRIS_ENABLE_LTO=OFF
-  # the archive links into a shared object: ELF requires PIC
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 ].freeze
 
