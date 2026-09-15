@@ -130,7 +130,6 @@ jobs:
           name: winext-${{ matrix.platform }}-${{ matrix.ruby-version }}
           path: |
             lib/teptris
-            lib/libteptris.dll
 
       - name: Upload platform gem
         if: runner.os != 'Windows'
@@ -172,7 +171,8 @@ jobs:
             test -f "lib/teptris/$v/teptris_ext.so" \
               || { echo "::error::missing ruby $v extension for ${{ matrix.platform }}"; exit 1; }
           done
-          test -f lib/libteptris.dll
+          # static link: libteptris lives inside each teptris_ext.so
+          test ! -f lib/libteptris.dll
 
       - run: bundle exec rake gem:pack:${{ matrix.platform }}
 
