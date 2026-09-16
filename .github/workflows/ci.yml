@@ -40,3 +40,28 @@ jobs:
           fi
           rake compile
           bundle exec rspec --format progress
+
+  # The musl flavor the release ships (alpine container): validates the
+  # container build (PGO corpus generation, the sh -c quoting, the
+  # gem:native musl rake path) BEFORE a release burns a version — the
+  # 0.2.24 apostrophe bug lived exactly here.
+  musl:
+    name: musl (alpine, x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@master
+        with:
+          ruby-version: '3.3'
+
+      - name: Compile + specs in Alpine container
+        run: |
+          docker run --rm             -v "$PWD:/work"             -w /work             ruby:3.3-alpine sh -c '
+              set -eux
+              apk add --no-cache build-base bash curl ca-certificates git cmake make gcc g++ python3
+              git config --global --add safe.directory /work
+              bundle install --jobs 4 --retry 3
+              rake compile
+              bundle exec rspec --format progress
+            '
