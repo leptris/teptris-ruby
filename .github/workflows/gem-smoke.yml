@@ -1,0 +1,40 @@
+name: published-gem smoke
+
+# Installs the PUBLISHED gem from rubygems (not the checkout) on every
+# released Windows Ruby and round-trips load/dump. Guards the fat-gem
+# per-minor layout (the #38/#15 "dies on require" bug class) against
+# regressions on the artifact users actually install.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: ${{ matrix.platform }} ruby ${{ matrix.ruby }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby: '3.1' }
+          - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby: '3.2' }
+          - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby: '3.3' }
+          - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby: '3.4' }
+          - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby: '4.0' }
+          - { os: windows-11-arm,  platform: aarch64-mingw-ucrt, ruby: '3.4' }
+          - { os: windows-11-arm,  platform: aarch64-mingw-ucrt, ruby: '4.0' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+
+      - name: Install the published gem and round-trip
+        shell: bash
+        run: |
+          gem install teptris --version 0.2.30 --platform ${{ matrix.platform }}
+          ruby scripts/gem_smoke.rb
