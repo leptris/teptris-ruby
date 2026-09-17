@@ -73,5 +73,19 @@ RSpec.describe "launch checklist (leptris/teptris-ruby#3)" do
       d = Teptris::Descriptor.build(children: [{ name: "gone", kind: :scalar }])
       expect(Teptris::TOML.load_schema("a = 1\n", d)).to eq("gone" => nil)
     end
+
+    it "keeps sub-plan ranges disjoint from later siblings (0.2.29 regression)" do
+      d = Teptris::Descriptor.build(
+        children: [
+          { name: "name", kind: :scalar },
+          { name: "items", kind: :nested, plan: {
+            children: [{ name: "id", kind: :scalar }] } },
+          { name: "meta", kind: :raw },
+        ])
+      out = Teptris::TOML.load_schema(
+        "name = \"svc\"\n[[items]]\nid = 1\n[meta]\nx = \"r\"\n", d)
+      expect(out["items"]).to eq([{ "id" => 1 }])
+      expect(out["meta"]).to eq("x" => "r")
+    end
   end
 end

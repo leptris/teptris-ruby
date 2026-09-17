@@ -351,9 +351,6 @@ static VALUE asm_rows(const teptris_plan *p, const teptris_plan_result *res,
     for (uint32_t i = 0; i < n; i++) {
         VALUE k = rb_str_new_cstr(teptris_plan_row_name_at(p, plan_idx, i));
         VALUE val = Qnil;
-        fprintf(stderr, "[asm] row %u kind=%u sub=%u\n", i,
-                teptris_plan_result_kind_at(res, i),
-                teptris_plan_row_sub_at(p, plan_idx, i));
         switch (teptris_plan_result_kind_at(res, i)) {
         case TEPTRIS_PLAN_SCALAR_RESULT: {
             teptris_datetime d;
