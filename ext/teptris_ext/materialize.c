@@ -529,7 +529,10 @@ static VALUE ext_plan_build(VALUE self, VALUE rows, VALUE first_row)
         rb_raise(eError, "plan needs >= 1 plan and >= 1 row");
     }
     teptris_plan_row *crows = calloc((size_t)nrows, sizeof(*crows));
-    uint32_t *cfirst = malloc((size_t)nplans + 1);
+    /* bytes-vs-count: this must be (nplans+1) * sizeof(uint32_t) — the
+     * byte-sized malloc overflows the heap and musl's allocator segfaults
+     * where glibc/darwin absorb it */
+    uint32_t *cfirst = malloc(((size_t)nplans + 1) * sizeof(*cfirst));
     if (crows == NULL || cfirst == NULL) {
         free(crows);
         free(cfirst);
