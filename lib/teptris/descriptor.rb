@@ -28,9 +28,10 @@ class Teptris::Descriptor
 
   def self.build(tree)
     rows = []
-    first_row = [0]
-    counter = [1]
+    first_row = [0] # plan 0 = the root: asm walks plan index 0
+    counter = [0]
     compile(tree, rows, first_row, counter)
+    first_row << rows.length # sentinel: end of the last plan's rows
     d = allocate
     d.instance_variable_set(:@rows, rows.freeze)
     d.instance_variable_set(:@first_row, first_row.freeze)
@@ -39,15 +40,25 @@ class Teptris::Descriptor
     d.freeze
   end
 
+  # Pre-order: each plan's rows are one CONTIGUOUS block; nested
+  # sub-plans are compiled after the parent's block starts and their
+  # indices patch the parent's NESTED rows. first_row must eventually
+  # carry plan_count + 1 entries (the sentinel is rows.length).
   def self.compile(tree, rows, first_row, counter)
     idx = counter[0]
     counter[0] += 1
     first_row[idx] = rows.length
     (tree[:children] || []).each do |ch|
       kind = KINDS.fetch(ch[:kind])
-      sub = 0
-      sub = compile(ch[:plan], rows, first_row, counter) if kind == 3
-      rows << [ch[:name].to_s, kind, sub]
+      if kind == 3
+        sub = counter[0]
+        pos = rows.length
+        rows << nil # patched with the real sub index below
+        sub = compile(ch[:plan], rows, first_row, counter)
+        rows[pos] = [ch[:name].to_s, kind, sub]
+      else
+        rows << [ch[:name].to_s, kind, 0]
+      end
     end
     idx
   end
