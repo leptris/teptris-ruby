@@ -1,6 +1,7 @@
 #include <ruby.h>
 #include <ruby/encoding.h>
 #include "teptris/teptris.h"
+#include "teptris/plan.h"
 
 /* flags: bit0 = datetimes as strings, bit1 = forbid Time, bit2 = forbid Date */
 #define FMT_STRING_DATES 1
@@ -328,11 +329,271 @@ static VALUE ext_dump(VALUE self, VALUE obj) {
     return out;
 }
 
+/* ------------------------------------------------- plan-walk (teptris#46) */
+
+static void plan_free(void *p) { teptris_plan_free((teptris_plan *)p); }
+
+static const rb_data_type_t plan_type = {
+    "Teptris/plan",
+    {0, plan_free, 0, {0, 0}},
+    0, 0, RUBY_TYPED_FREE_IMMEDIATELY
+};
+
+/* Native assembly over a walked result: plan row metadata drives a
+ * recursive builder; RAW rows re-use obj_from_node; datetime scalars
+ * mirror obj_from_node's native policy (Time/Date/canonical time
+ * string). Unmatched rows materialize as nil. */
+static VALUE asm_rows(const teptris_plan *p, const teptris_plan_result *res,
+                      uint32_t plan_idx)
+{
+    uint32_t n = teptris_plan_row_count(p, plan_idx);
+    VALUE h = rb_hash_new();
+    for (uint32_t i = 0; i < n; i++) {
+        VALUE k = rb_str_new_cstr(teptris_plan_row_name_at(p, plan_idx, i));
+        VALUE val = Qnil;
+        switch (teptris_plan_result_kind_at(res, i)) {
+        case TEPTRIS_PLAN_SCALAR_RESULT: {
+            teptris_datetime d;
+            switch (teptris_plan_result_value_kind_at(res, i)) {
+            case TEPTRIS_STRING: {
+                teptris_view v;
+                if (teptris_plan_result_string_at(res, i, &v) == TEPTRIS_OK) {
+                    val = rb_enc_str_new(v.ptr, (long)v.len, rb_utf8_encoding());
+                }
+                break;
+            }
+            case TEPTRIS_INTEGER: {
+                int64_t iv;
+                if (teptris_plan_result_integer_at(res, i, &iv) == TEPTRIS_OK) {
+                    val = LL2NUM(iv);
+                }
+                break;
+            }
+            case TEPTRIS_FLOAT: {
+                double dv;
+                if (teptris_plan_result_float_at(res, i, &dv) == TEPTRIS_OK) {
+                    val = DBL2NUM(dv);
+                }
+                break;
+            }
+            case TEPTRIS_BOOLEAN: {
+                bool bv;
+                if (teptris_plan_result_boolean_at(res, i, &bv) == TEPTRIS_OK) {
+                    val = bv ? Qtrue : Qfalse;
+                }
+                break;
+            }
+            case TEPTRIS_DATETIME_OFFSET:
+            case TEPTRIS_DATETIME_LOCAL:
+                if (teptris_plan_result_datetime_at(res, i, &d) == TEPTRIS_OK) {
+                    val = time_from_dt(&d,
+                                       teptris_plan_result_value_kind_at(res, i) ==
+                                           TEPTRIS_DATETIME_OFFSET);
+                }
+                break;
+            case TEPTRIS_DATE_LOCAL:
+                if (teptris_plan_result_datetime_at(res, i, &d) == TEPTRIS_OK) {
+                    val = rb_funcall(cDate, rb_intern("new"), 3,
+                                     INT2FIX(d.year), INT2FIX(d.month),
+                                     INT2FIX(d.day));
+                }
+                break;
+            case TEPTRIS_TIME_LOCAL:
+                if (teptris_plan_result_datetime_at(res, i, &d) == TEPTRIS_OK) {
+                    val = dt_string(&d, TEPTRIS_TIME_LOCAL);
+                }
+                break;
+            default:
+                break;
+            }
+            break;
+        }
+        case TEPTRIS_PLAN_ARRAY: {
+            uint32_t n2 = teptris_plan_result_array_len_at(res, i);
+            val = rb_ary_new_capa(n2);
+            for (uint32_t j = 0; j < n2; j++) {
+                switch (teptris_plan_result_array_kind_at(res, i, j)) {
+                case TEPTRIS_PLAN_SCALAR_RESULT: {
+                    teptris_datetime d;
+                    switch (teptris_plan_result_array_value_kind_at(res, i,
+                                                                    j)) {
+                    case TEPTRIS_STRING: {
+                        teptris_view v;
+                        if (teptris_plan_result_array_string_at(res, i, j, &v) ==
+                            TEPTRIS_OK) {
+                            rb_ary_push(val, rb_enc_str_new(
+                                                 v.ptr, (long)v.len,
+                                                 rb_utf8_encoding()));
+                        }
+                        break;
+                    }
+                    case TEPTRIS_INTEGER: {
+                        int64_t iv;
+                        if (teptris_plan_result_array_integer_at(res, i, j,
+                                                                 &iv) ==
+                            TEPTRIS_OK) {
+                            rb_ary_push(val, LL2NUM(iv));
+                        }
+                        break;
+                    }
+                    case TEPTRIS_FLOAT: {
+                        double dv;
+                        if (teptris_plan_result_array_float_at(res, i, j, &dv) ==
+                            TEPTRIS_OK) {
+                            rb_ary_push(val, DBL2NUM(dv));
+                        }
+                        break;
+                    }
+                    case TEPTRIS_BOOLEAN: {
+                        bool bv;
+                        if (teptris_plan_result_array_boolean_at(res, i, j,
+                                                                 &bv) ==
+                            TEPTRIS_OK) {
+                            rb_ary_push(val, bv ? Qtrue : Qfalse);
+                        }
+                        break;
+                    }
+                    case TEPTRIS_DATETIME_OFFSET:
+                    case TEPTRIS_DATETIME_LOCAL:
+                    case TEPTRIS_DATE_LOCAL:
+                    case TEPTRIS_TIME_LOCAL:
+                        if (teptris_plan_result_array_datetime_at(res, i, j,
+                                                                  &d) ==
+                            TEPTRIS_OK) {
+                            rb_ary_push(
+                                val,
+                                teptris_plan_result_array_value_kind_at(
+                                    res, i, j) == TEPTRIS_DATE_LOCAL
+                                    ? rb_funcall(cDate, rb_intern("new"), 3,
+                                                 INT2FIX(d.year),
+                                                 INT2FIX(d.month),
+                                                 INT2FIX(d.day))
+                                    : dt_string(&d, TEPTRIS_TIME_LOCAL));
+                        }
+                        break;
+                    default:
+                        rb_ary_push(val, Qnil);
+                        break;
+                    }
+                    break;
+                }
+                case TEPTRIS_PLAN_TABLE: {
+                    teptris_plan_result *sub =
+                        teptris_plan_result_array_entry_at(res, i, j);
+                    if (sub != NULL) {
+                        rb_ary_push(val, asm_rows(
+                                             p, sub,
+                                             teptris_plan_row_sub_at(p, plan_idx,
+                                                                  i)));
+                        teptris_plan_result_view_free(sub);
+                    }
+                    break;
+                }
+                default:
+                    rb_ary_push(val, Qnil);
+                    break;
+                }
+            }
+            break;
+        }
+        case TEPTRIS_PLAN_TABLE: {
+            teptris_plan_result *sub = teptris_plan_result_row_view(res, i);
+            if (sub != NULL) {
+                val = asm_rows(p, sub, teptris_plan_row_sub_at(p, plan_idx, i));
+                teptris_plan_result_view_free(sub);
+            }
+            break;
+        }
+        case TEPTRIS_PLAN_RAW_RESULT: {
+            const teptris_node *raw = teptris_plan_result_raw_at(res, i);
+            if (raw != NULL) {
+                val = obj_from_node(raw, 0);
+            }
+            break;
+        }
+        default:
+            break;
+        }
+        rb_hash_aset(h, k, val);
+    }
+    return h;
+}
+
+static VALUE ext_plan_build(VALUE self, VALUE rows, VALUE first_row)
+{
+    Check_Type(rows, T_ARRAY);
+    Check_Type(first_row, T_ARRAY);
+    long nrows = RARRAY_LEN(rows);
+    long nplans = RARRAY_LEN(first_row) - 1;
+    if (nplans < 1 || nrows < 1) {
+        rb_raise(eError, "plan needs >= 1 plan and >= 1 row");
+    }
+    teptris_plan_row *crows = calloc((size_t)nrows, sizeof(*crows));
+    uint32_t *cfirst = malloc((size_t)nplans + 1);
+    if (crows == NULL || cfirst == NULL) {
+        free(crows);
+        free(cfirst);
+        rb_raise(eError, "out of memory building plan");
+    }
+    for (long i = 0; i < nrows; i++) {
+        VALUE row = rb_ary_entry(rows, i);
+        Check_Type(row, T_ARRAY);
+        VALUE name = rb_ary_entry(row, 0);
+        SafeStringValue(name);
+        crows[i].name = strdup(StringValueCStr(name));
+        crows[i].kind = (uint8_t)NUM2UINT(rb_ary_entry(row, 1));
+        crows[i].sub = (uint32_t)NUM2UINT(rb_ary_entry(row, 2));
+    }
+    for (long i = 0; i <= nplans; i++) {
+        cfirst[i] = (uint32_t)NUM2UINT(rb_ary_entry(first_row, i));
+    }
+    teptris_plan_spec spec = {TEPTRIS_PLAN_ABI_VERSION, (uint32_t)nplans,
+                              crows, cfirst};
+    teptris_status st;
+    teptris_plan *plan = teptris_plan_build(&spec, &st);
+    free(crows);
+    free(cfirst);
+    if (plan == NULL) {
+        rb_raise(eError, "invalid plan spec (status %d)", (int)st);
+    }
+    return TypedData_Wrap_Struct(rb_cObject, &plan_type, plan);
+}
+
+static VALUE ext_plan_emit(VALUE self, VALUE rb_plan, VALUE toml)
+{
+    teptris_plan *plan;
+    TypedData_Get_Struct(rb_plan, teptris_plan, &plan_type, plan);
+    StringValue(toml);
+    teptris_document *doc = NULL;
+    teptris_status st =
+        teptris_parse(RSTRING_PTR(toml), (size_t)RSTRING_LEN(toml), NULL, &doc);
+    if (st != TEPTRIS_OK) {
+        const teptris_error *e = teptris_document_error(doc);
+        VALUE ex = rb_exc_new(eParseError, e->message, (long)strlen(e->message));
+        rb_iv_set(ex, "@line", SIZET2NUM(e->line));
+        rb_iv_set(ex, "@column", SIZET2NUM(e->column));
+        teptris_document_free(doc);
+        rb_exc_raise(ex);
+    }
+    teptris_plan_result *res =
+        teptris_plan_walk(plan, teptris_document_root(doc), &st);
+    if (res == NULL) {
+        teptris_document_free(doc);
+        rb_raise(eError, "plan walk failed (status %d)", (int)st);
+    }
+    VALUE out = asm_rows(plan, res, 0);
+    teptris_plan_result_free(res);
+    teptris_document_free(doc);
+    return out;
+}
+
 void Init_teptris_ext(void) {
     VALUE m = rb_define_module("TeptrisExt");
     rb_define_module_function(m, "load", ext_load, -1);
     rb_define_module_function(m, "dump", ext_dump, 1);
     rb_define_module_function(m, "engine_version", ext_version, 0);
+    rb_define_module_function(m, "plan_build", ext_plan_build, 2);
+    rb_define_module_function(m, "plan_emit", ext_plan_emit, 2);
     /* error/version load first (teptris.rb), then the ext bundle */
     VALUE t = rb_const_get(rb_cObject, rb_intern("Teptris"));
     eError = rb_const_get(t, rb_intern("Error"));

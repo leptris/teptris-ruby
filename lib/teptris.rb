@@ -2,6 +2,7 @@ require "date"
 
 require_relative "teptris/version"
 require_relative "teptris/error"
+require_relative "teptris/descriptor"
 require_relative "teptris/toml"
 
 # Windows ucrt rubies name their DLL per minor (x64-ucrt-ruby330.dll), so

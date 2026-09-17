@@ -36,13 +36,16 @@ module Teptris
         TeptrisExt.load(toml, opts)
       end
 
-      # Reserved: fused descriptor materialization, the same descriptor
-      # shape as leptris/yeptris#238 — see docs/DESCRIPTOR_ABI.md.
+      # One-pass schema materialization over a compiled
+      # Teptris::Descriptor: unplanned keys are never materialized
+      # (teptris#46).
       def load_schema(toml, descriptor)
-        raise Error,
-              "descriptor materialization lands with the co-designed " \
-              "ABI (leptris/yeptris#238); entry point is reserved — " \
-              "see docs/DESCRIPTOR_ABI.md (descriptor #{descriptor.class})"
+        unless descriptor.is_a?(Teptris::Descriptor)
+          raise ArgumentError,
+                "descriptor must be a Teptris::Descriptor (use " \
+                "Teptris::Descriptor.build), got #{descriptor.class}"
+        end
+        descriptor.walk(toml)
       end
 
       def engine_version

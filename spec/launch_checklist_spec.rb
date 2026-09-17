@@ -47,11 +47,31 @@ RSpec.describe "launch checklist (leptris/teptris-ruby#3)" do
     end
   end
 
-  describe "load_schema (descriptor entry point, reserved)" do
-    it "exists and documents the reservation" do
-      expect(Teptris::TOML.respond_to?(:load_schema)).to be(true)
+  describe "load_schema (descriptor entry point, implemented, teptris#46)" do
+    it "rejects non-descriptors" do
       expect { Teptris::TOML.load_schema("a = 1", {}) }
-        .to raise_error(Teptris::Error, /reserved/)
+        .to raise_error(ArgumentError, /Teptris::Descriptor/)
+    end
+
+    it "materializes planned keys in one pass and skips the rest" do
+      d = Teptris::Descriptor.build(
+        children: [
+          { name: "name", kind: :scalar },
+          { name: "hosts", kind: :collection },
+          { name: "items", kind: :nested, plan: {
+              children: [{ name: "id", kind: :scalar }] } },
+        ])
+      out = Teptris::TOML.load_schema(
+        "name = \"svc\"\njunk = [1, 2, 3]\nhosts = [\"a\", \"b\"]\n" \
+        "[[items]]\nid = 1\n[[items]]\nid = 2\n", d)
+      expect(out).to eq("name" => "svc", "hosts" => %w[a b],
+                        "items" => [{ "id" => 1 }, { "id" => 2 }])
+      expect(out).not_to have_key("junk")
+    end
+
+    it "reads absent rows as nil" do
+      d = Teptris::Descriptor.build(children: [{ name: "gone", kind: :scalar }])
+      expect(Teptris::TOML.load_schema("a = 1\n", d)).to eq("gone" => nil)
     end
   end
 end
