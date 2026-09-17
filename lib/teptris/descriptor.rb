@@ -27,11 +27,35 @@ class Teptris::Descriptor
   attr_reader :rows, :first_row
 
   def self.build(tree)
-    rows = []
-    first_row = [0] # plan 0 = the root: asm walks plan index 0
-    counter = [0]
-    compile(tree, rows, first_row, counter)
-    first_row << rows.length # sentinel: end of the last plan's rows
+    # Pre-order plan numbering (root = plan 0) with each plan's rows
+    # assigned a DISJOINT reserved range. Interleaved appending leaks
+    # siblings that follow a :nested child into the sub-plan's range —
+    # the 0.2.29 bug (every array-of-tables element grew stray nil
+    # rows).
+    plans = []
+    index_of = {}
+    collect = lambda do |t|
+      unless index_of.key?(t.object_id)
+        index_of[t.object_id] = plans.length
+        plans << t
+      end
+      (t[:children] || []).each do |ch|
+        collect.call(ch[:plan]) if KINDS.fetch(ch[:kind]) == 3
+      end
+    end
+    collect.call(tree)
+
+    first_row = [0]
+    plans.each { |t| first_row << first_row[-1] + (t[:children] || []).length }
+    rows = Array.new(first_row[-1])
+    plans.each_with_index do |t, i|
+      (t[:children] || []).each_with_index do |ch, j|
+        kind = KINDS.fetch(ch[:kind])
+        sub = kind == 3 ? index_of[ch[:plan].object_id] : 0
+        rows[first_row[i] + j] = [ch[:name].to_s, kind, sub]
+      end
+    end
+
     d = allocate
     d.instance_variable_set(:@rows, rows.freeze)
     d.instance_variable_set(:@first_row, first_row.freeze)
@@ -39,30 +63,6 @@ class Teptris::Descriptor
                             TeptrisExt.plan_build(rows, first_row))
     d.freeze
   end
-
-  # Pre-order: each plan's rows are one CONTIGUOUS block; nested
-  # sub-plans are compiled after the parent's block starts and their
-  # indices patch the parent's NESTED rows. first_row must eventually
-  # carry plan_count + 1 entries (the sentinel is rows.length).
-  def self.compile(tree, rows, first_row, counter)
-    idx = counter[0]
-    counter[0] += 1
-    first_row[idx] = rows.length
-    (tree[:children] || []).each do |ch|
-      kind = KINDS.fetch(ch[:kind])
-      if kind == 3
-        sub = counter[0]
-        pos = rows.length
-        rows << nil # patched with the real sub index below
-        sub = compile(ch[:plan], rows, first_row, counter)
-        rows[pos] = [ch[:name].to_s, kind, sub]
-      else
-        rows << [ch[:name].to_s, kind, 0]
-      end
-    end
-    idx
-  end
-  private_class_method :compile
 
   def walk(toml)
     TeptrisExt.plan_emit(@handle, toml)
