@@ -66,6 +66,10 @@ jobs:
           QEMU: ${{ matrix.qemu }}
           PLATFORM: ${{ matrix.platform }}
         run: |
+          # resolve the latest version host-side; the container reads it
+          # from the environment
+          # shellcheck disable=SC2034  # consumed inside the container via -e V
+          V=$(curl -s https://rubygems.org/api/v1/versions/teptris/latest.json | sed -E 's/.*"version":"([^"]+)".*/\1/')
           PLAT=()
           if [ -n "$QEMU" ]; then PLAT=(--platform "$QEMU"); fi
           case "$IMAGE" in
@@ -74,15 +78,24 @@ jobs:
             *alpine) SETUP=":" ;;
             *)       SETUP="apt-get update -qq && apt-get install -y --no-install-recommends ruby-full ruby-dev" ;;
           esac
-          docker run --rm -e PLATFORM "${PLAT[@]}"             -v "${PWD}:/work" -w /work "$IMAGE" sh -c '
+          docker run --rm -e PLATFORM -e V "${PLAT[@]}" \
+            -v "${PWD}:/work" -w /work "$IMAGE" sh -c '
               set -eux
               '"$SETUP"'
-              # explicit platform: plain resolution can pick the glibc
-              # gem inside musl containers (rubygems musl detection is
-              # not guaranteed on every image)
-              gem install teptris --no-document --platform "${PLATFORM}"
+              case "$PLATFORM" in
+                # musl platforms: rubygems resolution (plain OR
+                # --platform) falls through to the glibc gem on 3.5.22
+                # (probe-verified) - fetch the musl gem file and install
+                # it locally, which bypasses matching entirely
+                *musl)
+                  gem fetch teptris -v "$V" --platform "$PLATFORM"
+                  gem install ./teptris-"$V"-"$PLATFORM".gem --local --no-document ;;
+                *)
+                  gem install teptris --no-document --platform "$PLATFORM" ;;
+              esac
               ruby scripts/gem_smoke.rb
             '
+
 
   windows:
     name: ${{ matrix.platform }} ruby ${{ matrix.ruby }}
