@@ -219,20 +219,32 @@ jobs:
             platform: x86_64-linux-musl
           - os: ubuntu-24.04-arm
             platform: aarch64-linux-musl
+            # 32-bit ARM has no runners: the container runs emulated
+          - os: ubuntu-latest
+            platform: arm-linux-musl
+            qemu: linux/arm/v7
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.bump.outputs.sha || github.ref }}
 
+      - name: Ensure armv7 binfmt handlers
+        if: matrix.qemu
+        run: docker run --privileged --rm tonistiigi/binfmt --install arm
+
       # Musl builds in an Alpine container (JS actions stay on the host).
       - name: Build gem in Alpine container
         env:
           TARGET_PLATFORM: ${{ matrix.platform }}
+          QEMU: ${{ matrix.qemu }}
         run: |
-          docker run --rm \
+          PLAT=""
+          if [ -n "$QEMU" ]; then PLAT="--platform ${QEMU}"; fi
+          docker run --rm $PLAT \
             -v "$PWD:/work" \
             -w /work \
             -e target_platform="${TARGET_PLATFORM}" \
+            -e TEPTRIS_PGO=0 \
             ruby:3.3-alpine sh -c '
               set -eux
               # python3: the PGO stage generates the training corpus
@@ -247,8 +259,43 @@ jobs:
           name: pkg-${{ matrix.platform }}
           path: pkg/*.gem
 
+  # 32-bit ARM glibc gem, emulated (no armv7 runners exist). PGO off:
+  # profile training under qemu costs minutes for single-digit gains
+  # on a tier where working-at-all is the goal.
+  build-arm-gnu:
+    name: Build arm-linux gem (qemu)
+    needs: bump
+    if: always() && !cancelled() && !failure()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump.outputs.sha || github.ref }}
+
+      - name: Ensure armv7 binfmt handlers
+        run: docker run --privileged --rm tonistiigi/binfmt --install arm
+
+      - name: Build gem in Ubuntu armv7 container
+        run: |
+          docker run --rm --platform linux/arm/v7 \
+            -v "$PWD:/work" -w /work \
+            ubuntu:24.04 bash -c '
+              set -eux
+              apt-get update -qq
+              apt-get install -y --no-install-recommends \
+                build-essential cmake curl ca-certificates ruby-full ruby-dev
+              gem install rake --no-document
+              git config --global --add safe.directory /work || true
+              TEPTRIS_PGO=0 rake gem:native:arm-linux
+            '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-arm-linux
+          path: pkg/*.gem
+
   publish:
-    needs: [bump, build, build-musl, assemble-windows, build-source]
+    needs: [bump, build, build-musl, build-arm-gnu, assemble-windows, build-source]
     if: always() && !cancelled() && !failure()
     runs-on: ubuntu-latest
     steps:
