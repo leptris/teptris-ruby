@@ -6,16 +6,38 @@ leptris-ruby (XML) and yeptris-ruby (YAML+JSON). API-shape and value
 semantics mirror the `tomlib` gem: offset and local datetimes become
 `Time`, dates become `Date`, local times stay `String`.
 
-== Install (development)
-
-The gem loads a shared `libteptris` — from `TEPTRIS_LIB_PATH`, a
-vendored `lib/platform/<tag>/` copy, the sibling C checkout's build
-tree, or the system paths. For development against a local build:
+== Install
 
 ....
-cmake -B ../teptris/build -S ../teptris -DCMAKE_BUILD_TYPE=Release -DTEPTRIS_BUILD_SHARED=ON
-cmake --build ../teptris/build
-TEPTRIS_LIB_PATH=../teptris/build/src/libteptris.dylib bundle exec rspec
+gem install teptris
+....
+
+RubyGems resolves a prebuilt platform gem where one exists; every
+other platform (FreeBSD, OpenBSD, Solaris/illumos, armv7/riscv64/
+ppc64le, any-glibc Linux, Windows Ruby 3.0) gets the source gem,
+which compiles the vendored engine and the extension with the
+installing Ruby's own toolchain — a C compiler is required and the
+install fails loudly without one (the extension is the binding;
+there is no pure-Ruby fallback).
+
+.Supported platforms (prebuilt = PGO-trained, static, self-contained)
+[cols="2,1,3"]
+|===
+|Platform gem | Ruby | Notes
+
+|x86_64-linux, aarch64-linux | 3.0–4.0 | single ext; GLIBC >= 2.14 (x86_64) / 2.17 (aarch64)
+|x86_64-linux-musl, aarch64-linux-musl | 3.0–4.0 | built in Alpine containers
+|x86_64-darwin, arm64-darwin | 3.0–4.0 | macOS >= 11.0
+|x64-mingw-ucrt (fat) | 3.1–4.0 | one ext per Ruby minor
+|aarch64-mingw-ucrt (fat) | 3.4–4.0 | RubyInstaller ARM64 builds
+|ruby (source) | 3.0–4.0 | everything else; compiles at install
+|===
+
+== Development
+
+....
+rake compile          # two-stage PGO build of the pinned libteptris tag + the ext
+bundle exec rspec
 ....
 
 == Performance
