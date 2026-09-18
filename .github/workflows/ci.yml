@@ -12,15 +12,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # one cell per PGO flavor + platform family: clang (darwin),
-        # gcc ELF (ubuntu x64/arm), gcc mingw (windows x64/arm)
+        # full 3.3/3.4/4.0 series on the three primary OSes; one
+        # minor each on the secondary arches to bound runner time
         include:
-          - { os: macos-latest,      ruby-version: '3.3' }
-          - { os: macos-15-intel,    ruby-version: '3.3' }
-          - { os: ubuntu-latest,     ruby-version: '3.3' }
-          - { os: ubuntu-24.04-arm,  ruby-version: '3.3' }
-          - { os: windows-latest,    ruby-version: '3.4' }
-          - { os: windows-11-arm,    ruby-version: '3.4' }
+          - { os: ubuntu-latest,    ruby-version: '3.3' }
+          - { os: ubuntu-latest,    ruby-version: '3.4' }
+          - { os: ubuntu-latest,    ruby-version: '4.0' }
+          - { os: macos-latest,     ruby-version: '3.3' }
+          - { os: macos-latest,     ruby-version: '3.4' }
+          - { os: macos-latest,     ruby-version: '4.0' }
+          - { os: windows-latest,   ruby-version: '3.3' }
+          - { os: windows-latest,   ruby-version: '3.4' }
+          - { os: windows-latest,   ruby-version: '4.0' }
+          - { os: macos-15-intel,   ruby-version: '3.3' }
+          - { os: ubuntu-24.04-arm, ruby-version: '3.4' }
+          - { os: windows-11-arm,   ruby-version: '4.0' }
     steps:
       - uses: actions/checkout@v4
 
@@ -46,8 +52,14 @@ jobs:
   # gem:native musl rake path) BEFORE a release burns a version — the
   # 0.2.24 apostrophe bug lived exactly here.
   musl:
-    name: musl (alpine, x86_64)
-    runs-on: ubuntu-latest
+    name: musl (alpine, ${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,    platform: x86_64-linux-musl }
+          - { os: ubuntu-24.04-arm, platform: aarch64-linux-musl }
     steps:
       - uses: actions/checkout@v4
 
