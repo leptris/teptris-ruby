@@ -241,11 +241,11 @@ jobs:
           TARGET_PLATFORM: ${{ matrix.platform }}
           QEMU: ${{ matrix.qemu }}
         run: |
-          PLAT=""
-          if [ -n "$QEMU" ]; then PLAT="--platform ${QEMU}"; fi
           PLAT=()
           if [ -n "$QEMU" ]; then PLAT=(--platform "$QEMU"); fi
           docker run --rm "${PLAT[@]}" \
+            -v "${PWD}:/work" \
+            -w /work \
             -e target_platform="${TARGET_PLATFORM}" \
             -e TEPTRIS_PGO=0 \
             ruby:3.3-alpine sh -c '
