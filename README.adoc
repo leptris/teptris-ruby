@@ -29,6 +29,7 @@ static, self-contained)
 |x86_64-linux, aarch64-linux | 3.0–4.0 | single ext; GLIBC >= 2.14 (x86_64) / 2.17 (aarch64)
 |x86_64-linux-musl, aarch64-linux-musl | 3.0–4.0 | built in Alpine containers
 |arm-linux, arm-linux-musl | 3.0–4.0 | 32-bit ARM; qemu-emulated builds (no PGO)
+|powerpc64le-linux, s390x-linux | 3.0–4.0 | big-endian servers; qemu-emulated builds (no PGO)
 |x86_64-darwin, arm64-darwin | 3.0–4.0 | macOS >= 11.0
 |x64-mingw32 (fat) | 3.0 | msvcrt-era RubyInstaller
 |x64-mingw-ucrt (fat) | 3.1–4.0 | one ext per Ruby minor
