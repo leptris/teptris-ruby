@@ -86,3 +86,37 @@ jobs:
           rake gem:source
           gem install --verbose pkg/teptris-*.gem --no-document
           ruby -e 'require "teptris"; doc = Teptris::TOML.load("a = [1, {b = \"x\"}]\n[t]\nc = 1979-05-27T07:32:00Z\n"); dump = Teptris::TOML.dump(doc); abort "round-trip broken" unless dump.include?("1979-05-27") && dump.include?("x"); puts "source gem OK: engine #{Teptris::TOML.engine_version}"'
+
+  # 32-bit ARM gems build in emulated containers (release ships them;
+  # no armv7 runners exist). PGO off — see the release job's note.
+  armv7:
+    name: armv7 gems (qemu, musl + gnu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker run --privileged --rm tonistiigi/binfmt --install arm
+      - name: musl gem (alpine armv7)
+        run: |
+          docker run --rm --platform linux/arm/v7 \
+            -v "$PWD:/work" -w /work \
+            -e target_platform=arm-linux-musl \
+            -e TEPTRIS_PGO=0 \
+            ruby:3.3-alpine sh -c '
+              set -eux
+              apk add --no-cache build-base bash curl ca-certificates git cmake make gcc g++ python3
+              git config --global --add safe.directory /work
+              bundle install --jobs 4 --retry 3
+              bundle exec rake gem:native:arm-linux-musl
+            '
+      - name: gnu gem (ubuntu armv7)
+        run: |
+          docker run --rm --platform linux/arm/v7 \
+            -v "$PWD:/work" -w /work \
+            ubuntu:24.04 bash -c '
+              set -eux
+              apt-get update -qq
+              apt-get install -y --no-install-recommends \
+                build-essential cmake curl ca-certificates ruby-full ruby-dev
+              gem install rake --no-document
+              TEPTRIS_PGO=0 rake gem:native:arm-linux
+            '
