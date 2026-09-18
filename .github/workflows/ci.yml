@@ -120,3 +120,27 @@ jobs:
               gem install rake --no-document
               TEPTRIS_PGO=0 rake gem:native:arm-linux
             '
+
+  # Windows Ruby 3.0 (x64-mingw32, the pre-ucrt msvcrt era): the last
+  # RubyInstaller line without a ucrt build. Exploratory cell — wires
+  # into the release matrix once green. Self-verifying: builds the
+  # gem under 3.0, installs it, round-trips on the same interpreter.
+  mingw32:
+    name: x64-mingw32 (ruby 3.0)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@master
+        with:
+          ruby-version: '3.0'
+          bundler-cache: false
+      - run: ruby -e "puts RUBY_PLATFORM"
+        shell: bash
+      - name: Build, pack, install, round-trip
+        shell: bash
+        run: |
+          command -v ninja >/dev/null 2>&1 || choco install -y ninja
+          rake compile
+          rake gem:pack:x64-mingw32
+          gem install --local pkg/teptris-*-x64-mingw32.gem --no-document --force
+          ruby -e 'require "teptris"; doc = Teptris::TOML.load("a = [1, {b = \"x\"}]\n[t]\nc = 1979-05-27T07:32:00Z\n"); dump = Teptris::TOML.dump(doc); abort "round-trip broken" unless dump.include?("1979-05-27") && dump.include?("x"); puts "mingw32 gem OK"'
