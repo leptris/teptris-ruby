@@ -20,18 +20,25 @@ installing Ruby's own toolchain — a C compiler is required and the
 install fails loudly without one (the extension is the binding;
 there is no pure-Ruby fallback).
 
-.Supported platforms (prebuilt = PGO-trained, static, self-contained)
+.Supported platforms (prebuilt = PGO-trained where the runner allows,
+static, self-contained)
 [cols="2,1,3"]
 |===
 |Platform gem | Ruby | Notes
 
 |x86_64-linux, aarch64-linux | 3.0–4.0 | single ext; GLIBC >= 2.14 (x86_64) / 2.17 (aarch64)
 |x86_64-linux-musl, aarch64-linux-musl | 3.0–4.0 | built in Alpine containers
+|arm-linux, arm-linux-musl | 3.0–4.0 | 32-bit ARM; qemu-emulated builds (no PGO)
 |x86_64-darwin, arm64-darwin | 3.0–4.0 | macOS >= 11.0
+|x64-mingw32 (fat) | 3.0 | msvcrt-era RubyInstaller
 |x64-mingw-ucrt (fat) | 3.1–4.0 | one ext per Ruby minor
 |aarch64-mingw-ucrt (fat) | 3.4–4.0 | RubyInstaller ARM64 builds
 |ruby (source) | 3.0–4.0 | everything else; compiles at install
 |===
+
+The published-gem smoke lane installs each Windows fat gem from
+rubygems on every released Ruby and round-trips it; mingw and darwin
+gems ship byte-identical Ruby sources (EOLs aside).
 
 == Development
 
