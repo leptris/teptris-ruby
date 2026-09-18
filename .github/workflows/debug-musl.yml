@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: docker run --privileged --rm tonistiigi/binfmt --install arm64
       - name: Probe gem install resolution inside alpine arm64
         run: |
           docker run --rm --platform linux/arm64 \
