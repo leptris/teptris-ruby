@@ -78,7 +78,7 @@ jobs:
             *alpine) SETUP=":" ;;
             *)       SETUP="apt-get update -qq && apt-get install -y --no-install-recommends ruby-full ruby-dev" ;;
           esac
-          docker run --rm -e PLATFORM -e V "${PLAT[@]}" \
+          docker run --rm -e PLATFORM -e V -e V "${PLAT[@]}" \
             -v "${PWD}:/work" -w /work "$IMAGE" sh -c '
               set -eux
               '"$SETUP"'
