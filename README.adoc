@@ -41,6 +41,20 @@ The published-gem smoke lane installs each Windows fat gem from
 rubygems on every released Ruby and round-trips it; mingw and darwin
 gems ship byte-identical Ruby sources (EOLs aside).
 
+.Musl (Alpine) note
+[TIP]
+====
+Some rubygems versions (verified on 3.5.22) resolve the *glibc* gem
+for musl rubies even with an explicit `--platform`, failing at load
+with a missing `ld-linux-*.so`. If that happens, install the musl
+gem file directly:
+
+....
+gem fetch teptris --platform aarch64-linux-musl   # or x86_64/arm-linux-musl
+gem install ./teptris-*.gem --local
+....
+====
+
 == Development
 
 ....
