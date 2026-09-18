@@ -19,6 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - { os: windows-latest,  platform: x64-mingw32,        ruby: '3.0' }
           - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby: '3.1' }
           - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby: '3.2' }
           - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby: '3.3' }
@@ -36,5 +37,9 @@ jobs:
       - name: Install the published gem and round-trip
         shell: bash
         run: |
-          gem install teptris --version 0.2.30 --platform ${{ matrix.platform }}
+          # always smoke the LATEST published version (a pinned version
+          # silently stops testing the current release train)
+          V=$(curl -s https://rubygems.org/api/v1/versions/teptris/latest.json | sed 's/.*"version":"\([^"]*\)".*/\1/')
+          echo "smoking teptris $V"
+          gem install teptris --version "$V" --platform ${{ matrix.platform }}
           ruby scripts/gem_smoke.rb
