@@ -243,9 +243,9 @@ jobs:
         run: |
           PLAT=""
           if [ -n "$QEMU" ]; then PLAT="--platform ${QEMU}"; fi
-          docker run --rm $PLAT \
-            -v "$PWD:/work" \
-            -w /work \
+          PLAT=()
+          if [ -n "$QEMU" ]; then PLAT=(--platform "$QEMU"); fi
+          docker run --rm "${PLAT[@]}" \
             -e target_platform="${TARGET_PLATFORM}" \
             -e TEPTRIS_PGO=0 \
             ruby:3.3-alpine sh -c '
@@ -281,7 +281,7 @@ jobs:
       - name: Build gem in Ubuntu armv7 container
         run: |
           docker run --rm --platform linux/arm/v7 \
-            -v "$PWD:/work" -w /work \
+            -v "${PWD}:/work" -w /work \
             ubuntu:24.04 bash -c '
               set -eux
               apt-get update -qq
