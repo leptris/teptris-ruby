@@ -74,7 +74,7 @@ jobs:
             *alpine) SETUP=":" ;;
             *)       SETUP="apt-get update -qq && apt-get install -y --no-install-recommends ruby-full ruby-dev" ;;
           esac
-          docker run --rm "${PLAT[@]}"             -v "${PWD}:/work" -w /work "$IMAGE" sh -c '
+          docker run --rm -e PLATFORM "${PLAT[@]}"             -v "${PWD}:/work" -w /work "$IMAGE" sh -c '
               set -eux
               '"$SETUP"'
               # explicit platform: plain resolution can pick the glibc
