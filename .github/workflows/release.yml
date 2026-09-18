@@ -290,7 +290,7 @@ jobs:
           ref: ${{ needs.bump.outputs.sha || github.ref }}
 
       - name: Ensure binfmt handlers
-        run: docker run --privileged --rm tonistiigi/binfmt --install arm ppc64le s390x
+        run: docker run --privileged --rm tonistiigi/binfmt --install arm,ppc64le,s390x
 
       - name: Build gem in Ubuntu container
         run: |
