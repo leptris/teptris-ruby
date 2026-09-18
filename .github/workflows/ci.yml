@@ -88,8 +88,12 @@ jobs:
   # extconf source path on every change, not when an exotic user
   # first needs it.
   source-gem:
-    name: source gem (compiles at install)
-    runs-on: ubuntu-latest
+    name: source gem (${{ matrix.os }}, compiles at install)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@master

@@ -16,6 +16,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  unix:
+    name: ${{ matrix.os }} (published gem)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, platform: x86_64-linux }
+          - { os: macos-latest,  platform: arm64-darwin }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - name: Install the published gem and round-trip
+        shell: bash
+        run: |
+          V=$(curl -s https://rubygems.org/api/v1/versions/teptris/latest.json | sed 's/.*"version":"\([^"]*\)".*/\1/')
+          echo "smoking teptris $V (${{ matrix.platform }})"
+          gem install teptris --version "$V" --platform ${{ matrix.platform }}
+          ruby scripts/gem_smoke.rb
+
   windows:
     name: ${{ matrix.platform }} ruby ${{ matrix.ruby }}
     runs-on: ${{ matrix.os }}
