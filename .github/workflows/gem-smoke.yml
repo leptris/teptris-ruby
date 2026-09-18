@@ -69,7 +69,9 @@ jobs:
           PLAT=()
           if [ -n "$QEMU" ]; then PLAT=(--platform "$QEMU"); fi
           case "$IMAGE" in
-            *alpine) SETUP="apk add --no-cache ruby ruby-dev ruby-json ruby-etc" ;;
+            # ruby:3.3-alpine ships ruby+rubygems (source-built); the
+            # split ruby-* packages do not exist in its repos
+            *alpine) SETUP=":" ;;
             *)       SETUP="apt-get update -qq && apt-get install -y --no-install-recommends ruby-full ruby-dev" ;;
           esac
           docker run --rm "${PLAT[@]}"             -v "${PWD}:/work" -w /work "$IMAGE" sh -c '
