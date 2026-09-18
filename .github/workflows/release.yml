@@ -265,23 +265,34 @@ jobs:
   # 32-bit ARM glibc gem, emulated (no armv7 runners exist). PGO off:
   # profile training under qemu costs minutes for single-digit gains
   # on a tier where working-at-all is the goal.
-  build-arm-gnu:
-    name: Build arm-linux gem (qemu)
+  build-qemu:
+    name: Build ${{ matrix.platform }} gem (qemu)
     needs: bump
     if: always() && !cancelled() && !failure()
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # emulated arches with no runners; ubuntu:24.04 has every
+          # port. PGO off: training under qemu costs minutes for
+          # single-digit gains on tiers where working-at-all is the goal.
+          - { platform: arm-linux,         qemu: linux/arm/v7 }
+          - { platform: powerpc64le-linux, qemu: linux/ppc64le }
+          - { platform: s390x-linux,       qemu: linux/s390x }
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.bump.outputs.sha || github.ref }}
 
-      - name: Ensure armv7 binfmt handlers
-        run: docker run --privileged --rm tonistiigi/binfmt --install arm
+      - name: Ensure binfmt handlers
+        run: docker run --privileged --rm tonistiigi/binfmt --install arm ppc64le s390x
 
-      - name: Build gem in Ubuntu armv7 container
+      - name: Build gem in Ubuntu container
         run: |
-          docker run --rm --platform linux/arm/v7 \
+          docker run --rm --platform "${{ matrix.qemu }}" \
             -v "${PWD}:/work" -w /work \
+            -e GEM_TARGET=${{ matrix.platform }} \
             ubuntu:24.04 bash -c '
               set -eux
               apt-get update -qq
@@ -289,16 +300,16 @@ jobs:
                 build-essential cmake curl ca-certificates ruby-full ruby-dev
               gem install rake --no-document
               git config --global --add safe.directory /work || true
-              TEPTRIS_PGO=0 rake gem:native:arm-linux
+              TEPTRIS_PGO=0 rake "gem:native:${GEM_TARGET}"
             '
 
       - uses: actions/upload-artifact@v4
         with:
-          name: pkg-arm-linux
+          name: pkg-${{ matrix.platform }}
           path: pkg/*.gem
 
   publish:
-    needs: [bump, build, build-musl, build-arm-gnu, assemble-windows, build-source]
+    needs: [bump, build, build-musl, build-qemu, assemble-windows, build-source]
     if: always() && !cancelled() && !failure()
     runs-on: ubuntu-latest
     steps:
