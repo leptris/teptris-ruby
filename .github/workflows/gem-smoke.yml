@@ -77,7 +77,10 @@ jobs:
           docker run --rm "${PLAT[@]}"             -v "${PWD}:/work" -w /work "$IMAGE" sh -c '
               set -eux
               '"$SETUP"'
-              gem install teptris --no-document
+              # explicit platform: plain resolution can pick the glibc
+              # gem inside musl containers (rubygems musl detection is
+              # not guaranteed on every image)
+              gem install teptris --no-document --platform "${PLATFORM}"
               ruby scripts/gem_smoke.rb
             '
 
