@@ -38,6 +38,47 @@ jobs:
           gem install teptris --version "$V" --platform ${{ matrix.platform }}
           ruby scripts/gem_smoke.rb
 
+  # Emulated/exotic published-gem legs (dispatch lane, mirrors the
+  # release's qemu cells): install the PREBUILT gem inside a matching
+  # emulated container and round-trip. ruby:3.3-alpine is multi-arch
+  # (musl flavors); gnu flavors use ubuntu + apt ruby. No compilers
+  # needed - the .so ships inside the gem.
+  exotic:
+    name: ${{ matrix.platform }} (qemu published gem)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,    platform: arm-linux-musl,       image: "ruby:3.3-alpine",      qemu: linux/arm/v7 }
+          - { os: ubuntu-24.04-arm, platform: aarch64-linux-musl,   image: "ruby:3.3-alpine",      qemu: "" }
+          - { os: ubuntu-latest,    platform: arm-linux,            image: "ubuntu:24.04",         qemu: linux/arm/v7 }
+          - { os: ubuntu-latest,    platform: powerpc64le-linux,    image: "ubuntu:24.04",         qemu: linux/ppc64le }
+          - { os: ubuntu-latest,    platform: s390x-linux,          image: "ubuntu:24.04",         qemu: linux/s390x }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure binfmt handlers
+        if: matrix.qemu != ''
+        run: docker run --privileged --rm tonistiigi/binfmt --install arm,ppc64le,s390x
+      - name: Install the published gem and round-trip
+        env:
+          IMAGE: ${{ matrix.image }}
+          QEMU: ${{ matrix.qemu }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          PLAT=()
+          if [ -n "$QEMU" ]; then PLAT=(--platform "$QEMU"); fi
+          case "$IMAGE" in
+            *alpine) SETUP="apk add --no-cache ruby ruby-dev ruby-json ruby-etc" ;;
+            *)       SETUP="apt-get update -qq && apt-get install -y --no-install-recommends ruby-full ruby-dev" ;;
+          esac
+          docker run --rm "${PLAT[@]}"             -v "${PWD}:/work" -w /work "$IMAGE" sh -c '
+              set -eux
+              '"$SETUP"'
+              gem install teptris --no-document
+              ruby scripts/gem_smoke.rb
+            '
+
   windows:
     name: ${{ matrix.platform }} ruby ${{ matrix.ruby }}
     runs-on: ${{ matrix.os }}
