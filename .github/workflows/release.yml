@@ -73,11 +73,36 @@ jobs:
           git tag "v${NEW_VERSION}" HEAD
           git push origin "v${NEW_VERSION}"
 
+  # The ruby-platform source gem: the SAME mandatory native ext,
+  # compiled at install by the user's own toolchain (#7's no-fallback
+  # decision concerned the BINDING — never a slow pure-Ruby parser;
+  # this still fails loudly without a C compiler). Covers every
+  # platform the 8 prebuilt gems do not: FreeBSD/OpenBSD/Solaris,
+  # armv7/riscv64/ppc64le, any-glibc Linux, Windows Ruby 3.0.
+  build-source:
+    name: Build source gem
+    needs: bump
+    if: always() && !cancelled() && !failure()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump.outputs.sha || github.ref }}
+      - uses: ruby/setup-ruby@master
+        with:
+          ruby-version: '3.3'
+      - run: rake gem:source
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-ruby-source
+          path: pkg/*.gem
+
   build:
     needs: bump
     if: always() && !cancelled() && !failure()
     runs-on: ${{ matrix.os }}
-    # no `any` gem: no-fallback means the ext is mandatory (issue #7).
+    # precompiled cells: the ext ships built (PGO); no runtime fallback
     strategy:
       fail-fast: false
       matrix:
@@ -223,7 +248,7 @@ jobs:
           path: pkg/*.gem
 
   publish:
-    needs: [bump, build, build-musl, assemble-windows]
+    needs: [bump, build, build-musl, assemble-windows, build-source]
     if: always() && !cancelled() && !failure()
     runs-on: ubuntu-latest
     steps:

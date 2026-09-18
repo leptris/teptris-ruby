@@ -65,3 +65,24 @@ jobs:
               rake compile
               bundle exec rspec --format progress
             '
+
+  # The ruby-platform source gem: mkmf compiles the vendored engine at
+  # install time (the widest-support artifact — FreeBSD/Solaris/armv7/
+  # riscv64/old-glibc/windows-3.0 all resolve to it). Proves the
+  # extconf source path on every change, not when an exotic user
+  # first needs it.
+  source-gem:
+    name: source gem (compiles at install)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@master
+        with:
+          ruby-version: '3.3'
+      - name: Build + install source gem + round-trip
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rake gem:source
+          gem install --verbose pkg/teptris-*.gem --no-document
+          ruby -e 'require "teptris"; doc = Teptris::TOML.load("a = [1, {b = \"x\"}]\n[t]\nc = 1979-05-27T07:32:00Z\n"); dump = Teptris::TOML.dump(doc); abort "round-trip broken" unless dump.include?("1979-05-27") && dump.include?("x"); puts "source gem OK: engine #{Teptris::TOML.engine_version}"'
