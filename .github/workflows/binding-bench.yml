@@ -1,0 +1,64 @@
+name: binding-bench
+
+# Guards the BINDING hot path (TeptrisExt materialize/dump) against
+# silent regressions: every main push benches HEAD against the latest
+# PUBLISHED gem (the C engine has its own A/B lane; this covers the
+# Ruby layer the engine tests cannot see — the class of silent
+# multi-x binding regression leptris shipped in v1.9.182).
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prev-vs-head:
+    name: previous gem vs HEAD (regression gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+
+      - run: command -v ninja >/dev/null 2>&1 || sudo apt-get install -y ninja-build
+
+      - name: Compile the HEAD extension
+        run: rake compile
+
+      - name: Install the latest published gem
+        id: prev
+        run: |
+          V=$(curl -s https://rubygems.org/api/v1/versions/teptris/latest.json | sed 's/.*"version":"\([^"]*\)".*/\1/')
+          gem install teptris -v "$V" --no-document --install-dir "$RUNNER_TEMP/prev-gem"
+          PREV_LIB=$(find "$RUNNER_TEMP/prev-gem/gems" -maxdepth 2 -type d -name lib -path "*teptris*" | head -1)
+          test -f "$PREV_LIB/teptris.rb" || { echo "::error::prev gem lib not found"; exit 1; }
+          echo "prev-lib=$PREV_LIB" >> "$GITHUB_OUTPUT"
+
+      - name: Bench previous vs HEAD
+        run: |
+          ruby benchmark/prev_vs_head.rb "${{ steps.prev.outputs.prev-lib }}" prev > prev.txt
+          ruby benchmark/prev_vs_head.rb lib head > head.txt
+          cat prev.txt head.txt
+
+      - name: Gate (HEAD must be >= 90% of the published gem)
+        run: |
+          set -e
+          for m in load_small load_medium load_large dump_medium; do
+            p=$(awk '$1=="prev" && $2=="'"$m"'" {print $3}' prev.txt)
+            h=$(awk '$1=="head" && $2=="'"$m"'" {print $3}' head.txt)
+            ratio=$(awk -v h="$h" -v p="$p" 'BEGIN { printf "%.3f", h/p }')
+            echo "$m: prev=$p head=$h ratio=$ratio"
+            if awk -v r="$ratio" 'BEGIN { exit !(r < 0.90) }'; then
+              echo "::error::binding regression: $m ratio $ratio < 0.90"
+              exit 1
+            fi
+          done
+          echo "no binding regression (all ratios >= 0.90)"
