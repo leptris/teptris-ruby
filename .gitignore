@@ -8,3 +8,4 @@ Makefile
 *.bundle
 *.bundle.dSYM/
 ext/teptris_ext/Makefile
+ext/teptris_ext/engine/

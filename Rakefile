@@ -106,9 +106,36 @@ def build_gem(spec)
   mv(gem_file, "pkg/") if File.exist?(gem_file)
 end
 
-desc "Build the pure-Ruby gem"
-task "gem:native:any" do
-  build_gem(Gem::Specification.load("teptris.gemspec").dup)
+desc "Build the source (ruby-platform) gem: libteptris + ext compile at install"
+task "gem:source" do
+  version = ENV.fetch("LIBTEPTRIS_VERSION", LIBTEPTRIS_VERSION)
+  src = ENV["TEPTRIS_SRC"] # local checkout overrides the tarball
+  build = File.expand_path("tmp/libteptris-#{version}", __dir__)
+  rm_rf(build)
+  mkdir_p(build)
+  if src
+    cmake_src = File.expand_path(src)
+  else
+    url = "https://api.github.com/repos/leptris/teptris/tarball/v#{version}"
+    sh "curl -sL #{url} | tar xz -C #{build} --strip-components=1"
+    cmake_src = build
+  end
+  # Vendor the engine (clean tree from the pinned tag) into the ext:
+  # extconf's source mode compiles it with the installing ruby's own
+  # toolchain. PGO does not apply here — plain optimization flags.
+  eng = File.expand_path("ext/teptris_ext/engine", __dir__)
+  rm_rf(eng)
+  mkdir_p(File.join(eng, "src"))
+  cp_r(File.join(cmake_src, "src/teptris"), File.join(eng, "src/teptris"))
+  cp_r(File.join(cmake_src, "src/include"), File.join(eng, "src/include"))
+  cp(File.join(cmake_src, "LICENSE.md"), File.join(eng, "LICENSE.md"))
+  spec = Gem::Specification.load("teptris.gemspec").dup
+  spec.extensions = ["ext/teptris_ext/extconf.rb"]
+  spec.files += ["ext/teptris_ext/extconf.rb",
+                 "ext/teptris_ext/materialize.c",
+                 "ext/teptris_ext/engine/LICENSE.md"] +
+                Dir["ext/teptris_ext/engine/src/**/*.{c,h}"]
+  build_gem(spec)
 end
 
 platforms = [
