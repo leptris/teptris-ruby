@@ -11,7 +11,7 @@ end
 # Lockstep with the C core; `rake compile` builds this tag from the
 # release tarball (leptris-ruby pattern). Keep in step with
 # .github/workflows/release.yml and the CHANGELOG.
-LIBTEPTRIS_VERSION = "0.1.19"
+LIBTEPTRIS_VERSION = "0.1.20"
 
 # LTO off: bitcode in the static archive breaks mkmf's link step
 # (llvm 'unsupported stack probing method' on the ext link)
