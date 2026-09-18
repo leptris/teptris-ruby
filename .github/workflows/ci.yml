@@ -144,3 +144,14 @@ jobs:
           rake gem:pack:x64-mingw32
           gem install --local pkg/teptris-*-x64-mingw32.gem --no-document --force
           ruby -e 'require "teptris"; doc = Teptris::TOML.load("a = [1, {b = \"x\"}]\n[t]\nc = 1979-05-27T07:32:00Z\n"); dump = Teptris::TOML.dump(doc); abort "round-trip broken" unless dump.include?("1979-05-27") && dump.include?("x"); puts "mingw32 gem OK"'
+
+  # workflow-file linter: catches duplicate-key/schema breakage that
+  # PyYAML tolerates and GitHub only surfaces as placeholder runs
+  lint-workflows:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker://rhysd/actionlint:latest
+        with:
+          args: -color
