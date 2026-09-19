@@ -106,8 +106,11 @@ def build_gem(spec)
   mv(gem_file, "pkg/") if File.exist?(gem_file)
 end
 
-desc "Build the source (ruby-platform) gem: libteptris + ext compile at install"
-task "gem:source" do
+# Vendor the pinned-tag engine (clean tree) into the ext so the gem
+# carries the C source beside any prebuilt ext — extconf's source mode
+# compiles it with the installing ruby's own toolchain when a rebuild
+# is wanted. Returns nothing; leaves ext/teptris_ext/engine populated.
+def vendor_engine
   version = ENV.fetch("LIBTEPTRIS_VERSION", LIBTEPTRIS_VERSION)
   src = ENV["TEPTRIS_SRC"] # local checkout overrides the tarball
   build = File.expand_path("tmp/libteptris-#{version}", __dir__)
@@ -120,21 +123,27 @@ task "gem:source" do
     sh "curl -sL #{url} | tar xz -C #{build} --strip-components=1"
     cmake_src = build
   end
-  # Vendor the engine (clean tree from the pinned tag) into the ext:
-  # extconf's source mode compiles it with the installing ruby's own
-  # toolchain. PGO does not apply here — plain optimization flags.
   eng = File.expand_path("ext/teptris_ext/engine", __dir__)
   rm_rf(eng)
   mkdir_p(File.join(eng, "src"))
   cp_r(File.join(cmake_src, "src/teptris"), File.join(eng, "src/teptris"))
   cp_r(File.join(cmake_src, "src/include"), File.join(eng, "src/include"))
   cp(File.join(cmake_src, "LICENSE.md"), File.join(eng, "LICENSE.md"))
+end
+
+# Engine source files a gem must carry (beside the prebuilt ext on
+# platform gems, as the payload on the source gem).
+ENGINE_SOURCE_FILES = ["ext/teptris_ext/extconf.rb",
+                       "ext/teptris_ext/materialize.c",
+                       "ext/teptris_ext/engine/LICENSE.md"] +
+                      ["ext/teptris_ext/engine/src/**/*.{c,h}"].freeze
+
+desc "Build the source (ruby-platform) gem: libteptris + ext compile at install"
+task "gem:source" do
+  vendor_engine
   spec = Gem::Specification.load("teptris.gemspec").dup
   spec.extensions = ["ext/teptris_ext/extconf.rb"]
-  spec.files += ["ext/teptris_ext/extconf.rb",
-                 "ext/teptris_ext/materialize.c",
-                 "ext/teptris_ext/engine/LICENSE.md"] +
-                Dir["ext/teptris_ext/engine/src/**/*.{c,h}"]
+  spec.files += ENGINE_SOURCE_FILES.flat_map { |g| Dir[g] }
   build_gem(spec)
 end
 
@@ -158,14 +167,17 @@ platforms.each do |platform|
   mingw = platform.include?("mingw")
 
   # Pack a pre-compiled gem from whatever native files already sit in
-  # lib/ — used by CI's fat-gem assembly and never compiles.
+  # lib/ — used by CI's fat-gem assembly and never compiles. Every
+  # platform gem also carries the engine SOURCE (recompile path:
+  # untar, cd ext/teptris_ext, ruby extconf.rb && make).
   pack = task "gem:pack:#{platform}" do
     natives = Dir.glob("lib/teptris_ext.{so,bundle,dll}") +
               Dir.glob("lib/teptris/*/teptris_ext.so")
     abort "no native extension under lib/ for #{platform} — run rake compile first" if natives.empty?
+    vendor_engine
     spec = Gem::Specification.load("teptris.gemspec").dup
     spec.platform = Gem::Platform.new(platform)
-    spec.files += natives
+    spec.files += natives + ENGINE_SOURCE_FILES.flat_map { |g| Dir[g] }
     build_gem(spec)
   end
 
