@@ -76,16 +76,13 @@ task :compile do
     ext = Dir["teptris_ext.{so,bundle,dll}"].first
     raise "extension build produced no bundle in #{extdir}" unless ext
 
-    if win
-      # fat gem: one extension per ruby minor (each binds a different
-      # x64-ucrt-rubyNNN.dll); libteptris.dll below is minor-independent
-      minor = RUBY_VERSION[/\A\d+\.\d+/]
-      dest = File.expand_path("lib/teptris/#{minor}", __dir__)
-      mkdir_p(dest)
-      cp(ext, dest)
-    else
-      cp(ext, File.expand_path("lib", __dir__))
-    end
+    # fat gem on every platform: one extension per ruby minor under
+    # lib/teptris/<minor>/ (a unix .so built for one minor fails
+    # dlopen on another — ruby 4.0 could not load the 3.3-built ext)
+    minor = RUBY_VERSION[/\A\d+\.\d+/]
+    dest = File.expand_path("lib/teptris/#{minor}", __dir__)
+    mkdir_p(dest)
+    cp(ext, dest)
   end
 
   # nothing else to ship: libteptris lives inside teptris_ext
@@ -172,7 +169,7 @@ platforms.each do |platform|
   # untar, cd ext/teptris_ext, ruby extconf.rb && make).
   pack = task "gem:pack:#{platform}" do
     natives = Dir.glob("lib/teptris_ext.{so,bundle,dll}") +
-              Dir.glob("lib/teptris/*/teptris_ext.so")
+              Dir.glob("lib/teptris/*/teptris_ext.{so,bundle,dll}")
     abort "no native extension under lib/ for #{platform} — run rake compile first" if natives.empty?
     vendor_engine
     spec = Gem::Specification.load("teptris.gemspec").dup
