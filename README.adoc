@@ -37,6 +37,12 @@ static, self-contained)
 |ruby (source) | 3.0–4.0 | everything else; compiles at install
 |===
 
+Every prebuilt gem also carries the FULL ENGINE SOURCE at
+`ext/teptris_ext/engine` (beside the prebuilt extension): untar the
+gem, `cd ext/teptris_ext && ruby extconf.rb && make` to rebuild the
+extension against your own toolchain. The `ruby`-platform source
+gem vendors the same tree and compiles automatically at install.
+
 The published-gem smoke lane installs each Windows fat gem from
 rubygems on every released Ruby and round-trips it; mingw and darwin
 gems ship byte-identical Ruby sources (EOLs aside).
