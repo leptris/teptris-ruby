@@ -112,7 +112,7 @@ jobs:
       matrix:
         include:
           # Windows: ucrt rubies bind x64-ucrt-rubyNNN.dll per minor, so
-          # each cell builds ONE minor's extension; assemble-windows packs
+          # each cell builds ONE minor's extension; assemble-fat packs
           # them into a fat gem (nokogiri layout). RubyInstaller ARM64
           # builds exist only for 3.4 and 4.0; 3.0 is the last mingw32
           # (msvcrt) line.
@@ -124,10 +124,23 @@ jobs:
           - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby-version: '4.0' }
           - { os: windows-11-arm,  platform: aarch64-mingw-ucrt, ruby-version: '3.4' }
           - { os: windows-11-arm,  platform: aarch64-mingw-ucrt, ruby-version: '4.0' }
-          - { os: ubuntu-latest,   platform: x86_64-linux }
-          - { os: ubuntu-24.04-arm, platform: aarch64-linux }
-          - { os: macos-latest,    platform: arm64-darwin }
-          - { os: macos-15-intel,  platform: x86_64-darwin }
+          # Unix fat cells: one per ruby minor per platform — a unix
+          # .so binds the minor that built it (a 3.3-built ext failed
+          # dlopen under ruby 4.0 with the gem installed). assemble-fat
+          # packs 3.3/3.4/4.0 into one gem; older minors install the
+          # source gem, which compiles at install.
+          - { os: ubuntu-latest,   platform: x86_64-linux,  ruby-version: '3.3' }
+          - { os: ubuntu-latest,   platform: x86_64-linux,  ruby-version: '3.4' }
+          - { os: ubuntu-latest,   platform: x86_64-linux,  ruby-version: '4.0' }
+          - { os: ubuntu-24.04-arm, platform: aarch64-linux, ruby-version: '3.3' }
+          - { os: ubuntu-24.04-arm, platform: aarch64-linux, ruby-version: '3.4' }
+          - { os: ubuntu-24.04-arm, platform: aarch64-linux, ruby-version: '4.0' }
+          - { os: macos-latest,    platform: arm64-darwin,  ruby-version: '3.3' }
+          - { os: macos-latest,    platform: arm64-darwin,  ruby-version: '3.4' }
+          - { os: macos-latest,    platform: arm64-darwin,  ruby-version: '4.0' }
+          - { os: macos-15-intel,  platform: x86_64-darwin, ruby-version: '3.3' }
+          - { os: macos-15-intel,  platform: x86_64-darwin, ruby-version: '3.4' }
+          - { os: macos-15-intel,  platform: x86_64-darwin, ruby-version: '4.0' }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -142,34 +155,26 @@ jobs:
           ruby-version: ${{ matrix.ruby-version || '3.3' }}
           bundler-cache: true
 
-      - name: Build this ruby minor's extension (Windows cells)
+      - name: Build this ruby minor's extension
         if: runner.os == 'Windows'
         run: |
           command -v ninja >/dev/null 2>&1 || choco install -y ninja
           rake compile
         shell: bash
 
-      - name: Build the platform gem
+      - name: Build this ruby minor's extension (unix)
         if: runner.os != 'Windows'
-        run: rake gem:native:${{ matrix.platform }}
+        run: rake compile
         shell: bash
 
       - name: Upload extension cell
-        if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: winext-${{ matrix.platform }}-${{ matrix.ruby-version }}
+          name: ext-${{ matrix.platform }}-${{ matrix.ruby-version }}
           path: |
             lib/teptris
 
-      - name: Upload platform gem
-        if: runner.os != 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: pkg-${{ matrix.platform }}
-          path: pkg/*.gem
-
-  assemble-windows:
+  assemble-fat:
     name: Assemble fat gem (${{ matrix.platform }})
     needs: [bump, build]
     if: always() && !cancelled()
@@ -181,6 +186,10 @@ jobs:
           - { platform: x64-mingw32,        minors: "3.0" }
           - { platform: x64-mingw-ucrt,     minors: "3.1 3.2 3.3 3.4 4.0" }
           - { platform: aarch64-mingw-ucrt, minors: "3.4 4.0" }
+          - { platform: x86_64-linux,       minors: "3.3 3.4 4.0" }
+          - { platform: aarch64-linux,      minors: "3.3 3.4 4.0" }
+          - { platform: x86_64-darwin,      minors: "3.3 3.4 4.0" }
+          - { platform: arm64-darwin,       minors: "3.3 3.4 4.0" }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -193,7 +202,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: winext-${{ matrix.platform }}-*
+          pattern: ext-${{ matrix.platform }}-*
           path: lib/teptris
           merge-multiple: true
 
@@ -313,7 +322,7 @@ jobs:
           path: pkg/*.gem
 
   publish:
-    needs: [bump, build, build-musl, build-qemu, assemble-windows, build-source]
+    needs: [bump, build, build-musl, build-qemu, assemble-fat, build-source]
     if: always() && !cancelled() && !failure()
     runs-on: ubuntu-latest
     steps:

@@ -97,6 +97,38 @@ jobs:
             '
 
 
+  # Unix prebuilt gems carry one extension per ruby minor (fat
+  # layout): every minor the fat gem claims gets smoked on a real
+  # runner — a 3.3-built .so hard-failed dlopen under ruby 4.0 and
+  # nothing caught it while the unix legs only ran 3.3 images.
+  unix-native:
+    name: ${{ matrix.platform }} ruby ${{ matrix.ruby }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  platform: x86_64-linux,  ruby: '3.3' }
+          - { os: ubuntu-latest,  platform: x86_64-linux,  ruby: '3.4' }
+          - { os: ubuntu-latest,  platform: x86_64-linux,  ruby: '4.0' }
+          - { os: macos-latest,   platform: arm64-darwin,  ruby: '3.4' }
+          - { os: macos-latest,   platform: arm64-darwin,  ruby: '4.0' }
+          - { os: macos-15-intel, platform: x86_64-darwin, ruby: '3.4' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+
+      - name: Install the published gem and round-trip
+        shell: bash
+        run: |
+          V=$(curl -s https://rubygems.org/api/v1/versions/teptris/latest.json | sed 's/.*"version":"\([^"]*\)".*/\1/')
+          echo "smoking teptris $V"
+          gem install teptris --version "$V" --platform ${{ matrix.platform }}
+          ruby scripts/gem_smoke.rb
+
   windows:
     name: ${{ matrix.platform }} ruby ${{ matrix.ruby }}
     runs-on: ${{ matrix.os }}
