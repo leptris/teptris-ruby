@@ -126,13 +126,30 @@ def vendor_engine
   cp_r(File.join(cmake_src, "src/teptris"), File.join(eng, "src/teptris"))
   cp_r(File.join(cmake_src, "src/include"), File.join(eng, "src/include"))
   cp(File.join(cmake_src, "LICENSE.md"), File.join(eng, "LICENSE.md"))
+  File.write(File.join(eng, "README.md"), <<~README)
+    # libteptris #{version} — vendored source
+
+    This directory carries the COMPLETE C source of the engine this
+    gem's extension was built from (the packaging doctrine: compiled
+    gems ship the compiled library AND its source).
+
+    Rebuild the extension against this source with your own
+    toolchain (any C99 compiler; no dependencies beyond libc):
+
+        cd ext/teptris_ext
+        ruby extconf.rb && make
+
+    extconf.rb compiles everything under engine/src into the
+    extension when no prebuilt binary serves this ruby/platform.
+  README
 end
 
 # Engine source files a gem must carry (beside the prebuilt ext on
 # platform gems, as the payload on the source gem).
 ENGINE_SOURCE_FILES = ["ext/teptris_ext/extconf.rb",
                        "ext/teptris_ext/materialize.c",
-                       "ext/teptris_ext/engine/LICENSE.md"] +
+                       "ext/teptris_ext/engine/LICENSE.md",
+                       "ext/teptris_ext/engine/README.md"] +
                       ["ext/teptris_ext/engine/src/**/*.{c,h}"].freeze
 
 desc "Build the source (ruby-platform) gem: libteptris + ext compile at install"
@@ -172,6 +189,9 @@ platforms.each do |platform|
               Dir.glob("lib/teptris/*/teptris_ext.{so,bundle,dll}")
     abort "no native extension under lib/ for #{platform} — run rake compile first" if natives.empty?
     vendor_engine
+    # doctrine gate: a platform gem carries the binary AND the source
+    abort "doctrine: engine source missing under ext/teptris_ext/engine for #{platform}"       unless Dir["ext/teptris_ext/engine/src/teptris/*.{c,h}"].size >= 20
+    abort "doctrine: rebuild README missing for #{platform}"       unless File.exist?("ext/teptris_ext/engine/README.md")
     spec = Gem::Specification.load("teptris.gemspec").dup
     spec.platform = Gem::Platform.new(platform)
     spec.files += natives + ENGINE_SOURCE_FILES.flat_map { |g| Dir[g] }
