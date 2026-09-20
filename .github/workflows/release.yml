@@ -421,6 +421,13 @@ jobs:
           path: pkg
           merge-multiple: true
 
+      # the per-minor cells MUST run under their minor - the fat gem
+      # only loads the ext built for the running ruby
+      - uses: ruby/setup-ruby@v1
+        if: matrix.suffix != 'linux-all'
+        with:
+          ruby-version: ${{ matrix.ruby }}
+
       - name: Verify the glibc + musl fat gems and the source gem
         if: matrix.suffix == 'linux-all'
         shell: bash
@@ -444,7 +451,8 @@ jobs:
           docker run --rm -v "$PWD:/w" -w /w ruby:3.3-bookworm sh -c '
             set -eux
             apt-get update -qq >/dev/null && apt-get install -y -qq make gcc g++ cmake >/dev/null
-            gem install --local pkg/teptris-*-ruby.gem --no-document
+            srcgem=$(ls pkg/teptris-*-ruby.gem)
+            gem install --local "$srcgem" --no-document
             ruby scripts/gem_verify.rb'
 
       - name: Install the assembled gem locally and round-trip
