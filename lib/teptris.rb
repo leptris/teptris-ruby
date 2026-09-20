@@ -12,13 +12,21 @@ require_relative "teptris/toml"
 # already installed). The native extension IS the binding — no
 # fallback, ever; minors without a prebuilt cell ship via the source
 # gem, which compiles at install.
+minor = RUBY_VERSION[/\A\d+\.\d+/]
 begin
-  require "teptris/#{RUBY_VERSION[/\A\d+\.\d+/]}/teptris_ext"
+  # fat prebuilt gems: lib/teptris/<minor>/teptris_ext
+  require "teptris/#{minor}/teptris_ext"
 rescue LoadError
-  raise LoadError,
-        "teptris native extension for ruby #{RUBY_VERSION} not found " \
-        "(#{RUBY_PLATFORM}; no fallback by design — install the source " \
-        "gem: gem install teptris --platform ruby)"
+  begin
+    # source-built installs: rubygems puts the compiled ext on the
+    # load path under its bare name (no <minor> dir exists)
+    require "teptris_ext"
+  rescue LoadError
+    raise LoadError,
+          "teptris native extension for ruby #{RUBY_VERSION} not found " \
+          "(#{RUBY_PLATFORM}; no fallback by design — install the source " \
+          "gem: gem install teptris --platform ruby)"
+  end
 end
 
 module Teptris
