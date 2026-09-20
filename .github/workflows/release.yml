@@ -176,7 +176,7 @@ jobs:
 
   assemble-fat:
     name: Assemble fat gem (${{ matrix.platform }})
-    needs: [bump, build]
+    needs: [bump, build, build-musl]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     strategy:
@@ -188,6 +188,8 @@ jobs:
           - { platform: aarch64-mingw-ucrt, minors: "3.4 4.0" }
           - { platform: x86_64-linux,       minors: "3.3 3.4 4.0" }
           - { platform: aarch64-linux,      minors: "3.3 3.4 4.0" }
+          - { platform: x86_64-linux-musl,  minors: "3.3 3.4 4.0" }
+          - { platform: aarch64-linux-musl, minors: "3.3 3.4 4.0" }
           - { platform: x86_64-darwin,      minors: "3.3 3.4 4.0" }
           - { platform: arm64-darwin,       minors: "3.3 3.4 4.0" }
     steps:
@@ -235,8 +237,10 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: x86_64-linux-musl
+            minors: "3.3 3.4 4.0"
           - os: ubuntu-24.04-arm
             platform: aarch64-linux-musl
+            minors: "3.3 3.4 4.0"
             # 32-bit ARM has no runners: the container runs emulated
           - os: ubuntu-latest
             platform: arm-linux-musl
@@ -250,8 +254,42 @@ jobs:
         if: matrix.qemu
         run: docker run --privileged --rm tonistiigi/binfmt --install arm
 
+      # Native musl platforms build one extension per ruby minor
+      # (fat layout; assemble-fat packs). Emulated armv7 keeps the
+      # single-minor gem — tripling qemu builds for one tier is not
+      # worth the release wall time.
+      - name: Build each ruby minor's extension (Alpine, native)
+        if: matrix.minors
+        env:
+          TARGET_PLATFORM: ${{ matrix.platform }}
+          MINORS: ${{ matrix.minors }}
+        run: |
+          for v in $MINORS; do
+            docker run --rm \
+              -v "${PWD}:/work" \
+              -w /work \
+              -e TEPTRIS_PGO=0 \
+              "ruby:${v}-alpine" sh -c '
+                set -eux
+                apk add --no-cache build-base bash curl ca-certificates git cmake make gcc g++ python3
+                git config --global --add safe.directory /work
+                bundle install --jobs 4 --retry 3
+                bundle exec rake compile
+              '
+          done
+          ls -la lib/teptris/*/teptris_ext.so
+
+      - name: Upload extension cells
+        if: matrix.minors
+        uses: actions/upload-artifact@v4
+        with:
+          name: ext-${{ matrix.platform }}-all
+          path: |
+            lib/teptris
+
       # Musl builds in an Alpine container (JS actions stay on the host).
       - name: Build gem in Alpine container
+        if: ${{ !matrix.minors }}
         env:
           TARGET_PLATFORM: ${{ matrix.platform }}
           QEMU: ${{ matrix.qemu }}
@@ -273,6 +311,7 @@ jobs:
             '
 
       - uses: actions/upload-artifact@v4
+        if: ${{ !matrix.minors }}
         with:
           name: pkg-${{ matrix.platform }}
           path: pkg/*.gem
