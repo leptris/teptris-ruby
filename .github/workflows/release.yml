@@ -453,7 +453,8 @@ jobs:
           docker run --rm -v "$PWD:/w" -w /w ruby:3.3-bookworm sh -c '
             set -eux
             apt-get update -qq >/dev/null && apt-get install -y -qq make gcc g++ cmake >/dev/null
-            srcgem=$(ls pkg/teptris-*-ruby.gem)
+            # ruby-platform gems carry no platform suffix in the FILE name
+            srcgem=$(ls pkg/teptris-*.gem | grep -E 'teptris-[0-9.]+\.gem$')
             gem install --local "$srcgem" --no-document
             ruby scripts/gem_verify.rb'
 
