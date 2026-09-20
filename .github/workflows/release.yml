@@ -204,7 +204,9 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: ext-${{ matrix.platform }}-*
+          # glibc platforms glob their per-minor ext-<platform>-<minor>
+          # cells; musl platforms pull their single muslext artifact
+          pattern: ${{ contains(matrix.platform, 'musl') && format('muslext-{0}', matrix.platform) || format('ext-{0}-*', matrix.platform) }}
           path: lib/teptris
           merge-multiple: true
 
@@ -283,7 +285,11 @@ jobs:
         if: matrix.minors
         uses: actions/upload-artifact@v4
         with:
-          name: ext-${{ matrix.platform }}-all
+          # muslext-* namespace: assemble-fat's glibc downloads glob
+          # ext-<platform>-* and an ext-x86_64-linux-musl-* name
+          # matches ext-x86_64-linux-* — 0.2.40 merged MUSL exts over
+          # the glibc gems' own this way
+          name: muslext-${{ matrix.platform }}
           path: |
             lib/teptris
 
