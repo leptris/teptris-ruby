@@ -35,7 +35,13 @@ jobs:
         run: |
           V=$(curl -s https://rubygems.org/api/v1/versions/teptris/latest.json | sed 's/.*"version":"\([^"]*\)".*/\1/')
           echo "smoking teptris $V (${{ matrix.platform }})"
-          gem install teptris --version "$V" --platform ${{ matrix.platform }}
+          # latest.json can lead the installable index by a minute or
+          # two right after a release - retry through the propagation
+          for i in 1 2 3 4 5 6; do
+            gem install teptris --version "$V" --platform ${{ matrix.platform }} && break
+            [ "$i" = 6 ] && exit 1
+            sleep 25
+          done
           ruby scripts/gem_smoke.rb
 
   # Emulated/exotic published-gem legs (dispatch lane, mirrors the
@@ -93,10 +99,18 @@ jobs:
                 # (probe-verified) - fetch the musl gem file and install
                 # it locally, which bypasses matching entirely
                 *musl)
-                  gem fetch teptris -v "$V" --platform "$PLATFORM"
+                  for i in 1 2 3 4 5 6; do
+                    gem fetch teptris -v "$V" --platform "$PLATFORM" && break
+                    [ "$i" = 6 ] && exit 1
+                    sleep 25
+                  done
                   gem install ./teptris-"$V"-"$PLATFORM".gem --local --no-document ;;
                 *)
-                  gem install teptris --no-document --platform "$PLATFORM" ;;
+                  for i in 1 2 3 4 5 6; do
+                    gem install teptris --no-document --platform "$PLATFORM" && break
+                    [ "$i" = 6 ] && exit 1
+                    sleep 25
+                  done ;;
               esac
               ruby scripts/gem_smoke.rb
             '
@@ -131,7 +145,13 @@ jobs:
         run: |
           V=$(curl -s https://rubygems.org/api/v1/versions/teptris/latest.json | sed 's/.*"version":"\([^"]*\)".*/\1/')
           echo "smoking teptris $V"
-          gem install teptris --version "$V" --platform ${{ matrix.platform }}
+          # latest.json can lead the installable index by a minute or
+          # two right after a release - retry through the propagation
+          for i in 1 2 3 4 5 6; do
+            gem install teptris --version "$V" --platform ${{ matrix.platform }} && break
+            [ "$i" = 6 ] && exit 1
+            sleep 25
+          done
           ruby scripts/gem_smoke.rb
 
   windows:
@@ -163,5 +183,11 @@ jobs:
           # silently stops testing the current release train)
           V=$(curl -s https://rubygems.org/api/v1/versions/teptris/latest.json | sed 's/.*"version":"\([^"]*\)".*/\1/')
           echo "smoking teptris $V"
-          gem install teptris --version "$V" --platform ${{ matrix.platform }}
+          # latest.json can lead the installable index by a minute or
+          # two right after a release - retry through the propagation
+          for i in 1 2 3 4 5 6; do
+            gem install teptris --version "$V" --platform ${{ matrix.platform }} && break
+            [ "$i" = 6 ] && exit 1
+            sleep 25
+          done
           ruby scripts/gem_smoke.rb
