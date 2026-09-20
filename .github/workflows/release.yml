@@ -208,8 +208,10 @@ jobs:
 
       - name: Verify every ruby minor made it
         run: |
+          # darwin compiles teptris_ext.bundle; linux/windows .so
           for v in ${{ matrix.minors }}; do
             test -f "lib/teptris/$v/teptris_ext.so" \
+              -o -f "lib/teptris/$v/teptris_ext.bundle" \
               || { echo "::error::missing ruby $v extension for ${{ matrix.platform }}"; exit 1; }
           done
           # static link: libteptris lives inside each teptris_ext.so
