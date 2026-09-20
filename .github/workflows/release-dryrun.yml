@@ -5,6 +5,14 @@ name: release-dryrun
 
 on:
   workflow_dispatch:
+  # a PR that touches the release machinery rehearses the whole
+  # matrix automatically - the 0.2.42 saga failed five real
+  # dispatches before the dry-run existed
+  pull_request:
+    paths:
+      - ".github/workflows/release-matrix.yml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release-dryrun.yml"
 
 permissions:
   contents: read
