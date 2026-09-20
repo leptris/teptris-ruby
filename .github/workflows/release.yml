@@ -70,6 +70,8 @@ jobs:
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Fail fast on a leftover tag from a half-failed run
+        env:
+          NEW_VERSION: ${{ steps.bump.outputs.new-version }}
         run: |
           # A prior run that failed after tagging leaves v<version>
           # behind; the push below then dies non-fast-forward and
