@@ -26,16 +26,23 @@ static, self-contained)
 |===
 |Platform gem | Ruby | Notes
 
-|x86_64-linux, aarch64-linux | 3.0–4.0 | single ext; GLIBC >= 2.14 (x86_64) / 2.17 (aarch64)
-|x86_64-linux-musl, aarch64-linux-musl | 3.0–4.0 | built in Alpine containers
-|arm-linux, arm-linux-musl | 3.0–4.0 | 32-bit ARM; qemu-emulated builds (no PGO)
-|powerpc64le-linux, s390x-linux | 3.0–4.0 | big-endian servers; qemu-emulated builds (no PGO)
-|x86_64-darwin, arm64-darwin | 3.0–4.0 | macOS >= 11.0
+|x86_64-linux, aarch64-linux (fat) | 3.3–4.0 | one ext per minor; GLIBC >= 2.14 (x86_64) / 2.17 (aarch64)
+|x86_64-linux-musl, aarch64-linux-musl (fat) | 3.3–4.0 | one ext per minor; built in Alpine containers
+|arm-linux, arm-linux-musl | 3.3 | 32-bit ARM; qemu-emulated build (no PGO), single minor
+|powerpc64le-linux, s390x-linux | 3.3 | big-endian servers; qemu-emulated builds (no PGO), single minor
+|x86_64-darwin, arm64-darwin (fat) | 3.3–4.0 | one ext per minor; macOS >= 11.0
 |x64-mingw32 (fat) | 3.0 | msvcrt-era RubyInstaller
 |x64-mingw-ucrt (fat) | 3.1–4.0 | one ext per Ruby minor
 |aarch64-mingw-ucrt (fat) | 3.4–4.0 | RubyInstaller ARM64 builds
-|ruby (source) | 3.0–4.0 | everything else; compiles at install
+|ruby (source) | 3.0–4.0 | everything else — including 3.0–3.2 on fat platforms and any minor on the emulated tier; compiles at install
 |===
+
+A native extension binds the Ruby minor that built it, so the fat
+gems ship one extension per minor under `lib/teptris/<minor>/` and
+the loader picks yours. On a minor a platform gem does not carry,
+the LoadError names the remedy: install the source gem (`gem
+install teptris --platform ruby`), which compiles the vendored
+engine at install.
 
 Every prebuilt gem also carries the FULL ENGINE SOURCE at
 `ext/teptris_ext/engine` (beside the prebuilt extension): untar the
