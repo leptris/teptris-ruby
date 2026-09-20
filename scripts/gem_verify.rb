@@ -9,7 +9,7 @@ require_relative "roundtrip_assertions"
 
 spec = Gem::Specification.find_by_name("teptris")
 root = spec.full_gem_path
-engine_src = Dir[File.join(root, "ext/teptris_ext/engine/src/teptris/*.{c,h}")]
+engine_src = Dir[File.join(root, "ext/teptris_ext/engine/src/teptris/**/*.{c,h}")]
 raise "doctrine: only #{engine_src.size} engine sources in installed gem" if engine_src.size < 20
 raise "doctrine: engine LICENSE missing" unless File.exist?(File.join(root, "ext/teptris_ext/engine/LICENSE.md"))
 raise "doctrine: rebuild README missing" unless File.exist?(File.join(root, "ext/teptris_ext/engine/README.md"))

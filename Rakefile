@@ -190,7 +190,7 @@ platforms.each do |platform|
     abort "no native extension under lib/ for #{platform} — run rake compile first" if natives.empty?
     vendor_engine
     # doctrine gate: a platform gem carries the binary AND the source
-    abort "doctrine: engine source missing under ext/teptris_ext/engine for #{platform}"       unless Dir["ext/teptris_ext/engine/src/teptris/*.{c,h}"].size >= 20
+    abort "doctrine: engine source missing under ext/teptris_ext/engine for #{platform}"       unless Dir["ext/teptris_ext/engine/src/teptris/**/*.{c,h}"].size >= 20
     abort "doctrine: rebuild README missing for #{platform}"       unless File.exist?("ext/teptris_ext/engine/README.md")
     spec = Gem::Specification.load("teptris.gemspec").dup
     spec.platform = Gem::Platform.new(platform)
