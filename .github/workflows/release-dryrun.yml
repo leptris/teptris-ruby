@@ -1,0 +1,20 @@
+# Exercise the full release matrix - build, assemble, verify -
+# without bumping, tagging, or publishing. Dispatch on any branch to
+# catch release-only breakage before it burns a version number.
+name: release-dryrun
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-matrix-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  matrix:
+    uses: ./.github/workflows/release-matrix.yml
+    with:
+      ref: ${{ github.sha }}
