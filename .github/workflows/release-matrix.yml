@@ -18,10 +18,10 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: release-matrix-${{ github.ref }}
-  cancel-in-progress: false
-
+# no workflow-level concurrency here: reusable workflows may not
+# declare one - the callers (release / release-dryrun) carry their
+# own groups, and artifacts are per-run so parallel callers cannot
+# collide
 jobs:
   build-source:
     name: Build source gem
