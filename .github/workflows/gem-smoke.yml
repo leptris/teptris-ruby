@@ -7,6 +7,12 @@ name: published-gem smoke
 
 on:
   workflow_dispatch:
+  # the release lane triggers this automatically after publishing -
+  # the published-gem gate no longer depends on someone remembering
+  # to dispatch it
+  workflow_run:
+    workflows: [release]
+    types: [completed]
 
 permissions:
   contents: read
@@ -19,6 +25,7 @@ jobs:
   unix:
     name: ${{ matrix.os }} (published gem)
     runs-on: ${{ matrix.os }}
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -52,6 +59,7 @@ jobs:
   exotic:
     name: ${{ matrix.platform }} (qemu published gem)
     runs-on: ${{ matrix.os }}
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -123,6 +131,7 @@ jobs:
   unix-native:
     name: ${{ matrix.platform }} ruby ${{ matrix.ruby }}
     runs-on: ${{ matrix.os }}
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -157,6 +166,7 @@ jobs:
   windows:
     name: ${{ matrix.platform }} ruby ${{ matrix.ruby }}
     runs-on: ${{ matrix.os }}
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     strategy:
       fail-fast: false
       matrix:
