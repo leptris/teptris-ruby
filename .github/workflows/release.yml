@@ -69,6 +69,18 @@ jobs:
           fi
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Fail fast on a leftover tag from a half-failed run
+        run: |
+          # A prior run that failed after tagging leaves v<version>
+          # behind; the push below then dies non-fast-forward and
+          # starves the downstream jobs of artifacts (the 0.2.40
+          # incident). Name the remedy instead.
+          if git ls-remote --tags origin "v${NEW_VERSION}" | grep -q .; then
+            echo "::error::tag v${NEW_VERSION} already exists. If no release/gems were published, delete it first:"
+            echo "::error::  git push origin :refs/tags/v${NEW_VERSION}"
+            exit 1
+          fi
+
       - name: Push bump commit + tag
         env:
           NEW_VERSION: ${{ steps.bump.outputs.new-version }}
@@ -368,8 +380,84 @@ jobs:
           name: pkg-${{ matrix.platform }}
           path: pkg/*.gem
 
-  publish:
+  # Pre-publish gate: install every ASSEMBLED gem locally and
+  # round-trip it on the platform family it targets. Every broken-gem
+  # incident so far (musl exts layered over glibc gems by an artifact
+  # glob, per-minor dirs missing) fails HERE instead of shipping. The
+  # emulated tier (armv7/ppc64le/s390x/aarch64-linux) stays covered
+  # by the smoke lane the release triggers right after publishing.
+  verify-gems:
     needs: [bump, build, build-musl, build-qemu, assemble-fat, build-source]
+    if: always() && !cancelled() && !failure()
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # one cell per fat platform x ruby minor (host runner ruby)
+          - { os: macos-latest,    suffix: arm64-darwin,  ruby: '3.3' }
+          - { os: macos-latest,    suffix: arm64-darwin,  ruby: '3.4' }
+          - { os: macos-latest,    suffix: arm64-darwin,  ruby: '4.0' }
+          - { os: macos-15-intel,  suffix: x86_64-darwin, ruby: '3.3' }
+          - { os: macos-15-intel,  suffix: x86_64-darwin, ruby: '3.4' }
+          - { os: macos-15-intel,  suffix: x86_64-darwin, ruby: '4.0' }
+          - { os: windows-latest,  suffix: x64-mingw-ucrt,     ruby: '3.3' }
+          - { os: windows-latest,  suffix: x64-mingw-ucrt,     ruby: '3.4' }
+          - { os: windows-latest,  suffix: x64-mingw-ucrt,     ruby: '4.0' }
+          - { os: windows-latest,  suffix: x64-mingw32,        ruby: '3.0' }
+          - { os: windows-11-arm,  suffix: aarch64-mingw-ucrt, ruby: '3.4' }
+          - { os: windows-11-arm,  suffix: aarch64-mingw-ucrt, ruby: '4.0' }
+          # the linux cell verifies EVERYTHING cheap in containers:
+          # glibc + musl fat minors, and the source gem compile
+          - { os: ubuntu-latest,   suffix: linux-all,        ruby: '3.3' }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump.outputs.sha || github.ref }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          path: pkg
+          merge-multiple: true
+
+      - name: Verify the glibc + musl fat gems and the source gem
+        if: matrix.suffix == 'linux-all'
+        shell: bash
+        run: |
+          set -eux
+          ls pkg/
+          verify() {
+            local image="$1" gem="$2" setup="$3"
+            docker run --rm -v "$PWD:/w" -w /w "$image" sh -c "
+              set -eux
+              $setup
+              gem install --local $gem --no-document
+              ruby scripts/gem_verify.rb"
+          }
+          for v in 3.3 3.4 4.0; do
+            verify "ruby:${v}-bookworm" "pkg/teptris-*-x86_64-linux.gem" \
+              "apt-get update -qq >/dev/null && apt-get install -y -qq make gcc g++ cmake >/dev/null"
+            verify "ruby:${v}-alpine" "pkg/teptris-*-x86_64-linux-musl.gem" \
+              "apk add --no-cache build-base make gcc g++ cmake >/dev/null"
+          done
+          docker run --rm -v "$PWD:/w" -w /w ruby:3.3-bookworm sh -c '
+            set -eux
+            apt-get update -qq >/dev/null && apt-get install -y -qq make gcc g++ cmake >/dev/null
+            gem install --local pkg/teptris-*-ruby.gem --no-document
+            ruby scripts/gem_verify.rb'
+
+      - name: Install the assembled gem locally and round-trip
+        if: matrix.suffix != 'linux-all'
+        shell: bash
+        run: |
+          set -eux
+          ls pkg/
+          gem install --local pkg/teptris-*-${{ matrix.suffix }}.gem --no-document
+          ruby scripts/gem_verify.rb
+
+  publish:
+    needs: [bump, build, build-musl, build-qemu, assemble-fat, build-source, verify-gems]
     if: always() && !cancelled() && !failure()
     runs-on: ubuntu-latest
     steps:
