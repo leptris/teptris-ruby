@@ -52,6 +52,11 @@ jobs:
         include:
           - { os: ubuntu-latest,    platform: arm-linux-musl,       image: "ruby:3.3-alpine",      qemu: linux/arm/v7 }
           - { os: ubuntu-24.04-arm, platform: aarch64-linux-musl,   image: "ruby:3.3-alpine",      qemu: "" }
+          # fat-musl minors (native containers, no emulation)
+          - { os: ubuntu-latest,    platform: x86_64-linux-musl,    image: "ruby:3.4-alpine",      qemu: "" }
+          - { os: ubuntu-latest,    platform: x86_64-linux-musl,    image: "ruby:4.0-alpine",      qemu: "" }
+          - { os: ubuntu-24.04-arm, platform: aarch64-linux-musl,   image: "ruby:3.4-alpine",      qemu: "" }
+          - { os: ubuntu-24.04-arm, platform: aarch64-linux-musl,   image: "ruby:4.0-alpine",      qemu: "" }
           - { os: ubuntu-latest,    platform: arm-linux,            image: "ubuntu:24.04",         qemu: linux/arm/v7 }
           - { os: ubuntu-latest,    platform: powerpc64le-linux,    image: "ubuntu:24.04",         qemu: linux/ppc64le }
           - { os: ubuntu-latest,    platform: s390x-linux,          image: "ubuntu:24.04",         qemu: linux/s390x }
