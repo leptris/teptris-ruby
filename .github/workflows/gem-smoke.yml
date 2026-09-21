@@ -71,9 +71,13 @@ jobs:
           - { os: ubuntu-latest,    platform: x86_64-linux-musl,    image: "ruby:4.0-alpine",      qemu: "" }
           - { os: ubuntu-24.04-arm, platform: aarch64-linux-musl,   image: "ruby:3.4-alpine",      qemu: "" }
           - { os: ubuntu-24.04-arm, platform: aarch64-linux-musl,   image: "ruby:4.0-alpine",      qemu: "" }
-          - { os: ubuntu-latest,    platform: arm-linux,            image: "ubuntu:24.04",         qemu: linux/arm/v7 }
-          - { os: ubuntu-latest,    platform: powerpc64le-linux,    image: "ubuntu:24.04",         qemu: linux/ppc64le }
-          - { os: ubuntu-latest,    platform: s390x-linux,          image: "ubuntu:24.04",         qemu: linux/s390x }
+          # the emulated gems are now fat (3.3/3.4/4.0): smoke in the
+          # matching official ruby image - the old ubuntu:24.04 +
+          # apt-ruby-3.2 legs could not even load the 3.3+ fat exts
+          - { os: ubuntu-latest,    platform: arm-linux,            image: "ruby:3.4",             qemu: linux/arm/v7 }
+          - { os: ubuntu-latest,    platform: powerpc64le-linux,    image: "ruby:4.0",             qemu: linux/ppc64le }
+          - { os: ubuntu-latest,    platform: s390x-linux,          image: "ruby:3.4",             qemu: linux/s390x }
+          - { os: ubuntu-latest,    platform: s390x-linux-musl,     image: "ruby:3.3-alpine",      qemu: linux/s390x }
     steps:
       - uses: actions/checkout@v4
       - name: Ensure binfmt handlers

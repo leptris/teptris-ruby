@@ -128,6 +128,9 @@ jobs:
           - { platform: aarch64-linux,      minors: "3.3 3.4 4.0" }
           - { platform: x86_64-linux-musl,  minors: "3.3 3.4 4.0" }
           - { platform: aarch64-linux-musl, minors: "3.3 3.4 4.0" }
+          - { platform: arm-linux,          minors: "3.3 3.4 4.0" }
+          - { platform: powerpc64le-linux,  minors: "3.3 3.4 4.0" }
+          - { platform: s390x-linux,        minors: "3.3 3.4 4.0" }
           - { platform: x86_64-darwin,      minors: "3.3 3.4 4.0" }
           - { platform: arm64-darwin,       minors: "3.3 3.4 4.0" }
     steps:
@@ -184,14 +187,21 @@ jobs:
           - os: ubuntu-latest
             platform: arm-linux-musl
             qemu: linux/arm/v7
+          # IBM Z musl (alpine still ships ruby for s390x): single-minor
+          # 3.3 - alpine's ruby 3.4+/4.0 images for s390x are not
+          # published, and one more emulated tier-3 gem beats none
+          - os: ubuntu-latest
+            platform: s390x-linux-musl
+            qemu: linux/s390x
+            image_override: ruby:3.3-alpine
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Ensure armv7 binfmt handlers
+      - name: Ensure binfmt handlers
         if: matrix.qemu
-        run: docker run --privileged --rm tonistiigi/binfmt --install arm
+        run: docker run --privileged --rm tonistiigi/binfmt --install arm,s390x
 
       # Native musl platforms build one extension per ruby minor
       # (fat layout; assemble-fat packs). Emulated armv7 keeps the
@@ -236,6 +246,7 @@ jobs:
         env:
           TARGET_PLATFORM: ${{ matrix.platform }}
           QEMU: ${{ matrix.qemu }}
+          IMAGE_OVERRIDE: ${{ matrix.image_override || '' }}
         run: |
           PLAT=()
           if [ -n "$QEMU" ]; then PLAT=(--platform "$QEMU"); fi
@@ -259,23 +270,30 @@ jobs:
           name: pkg-${{ matrix.platform }}
           path: pkg/*.gem
 
-  # 32-bit ARM glibc gem, emulated (no armv7 runners exist). PGO off:
-  # profile training under qemu costs minutes for single-digit gains
-  # on a tier where working-at-all is the goal.
+  # Emulated tier (no runners): armv7, POWER8+, IBM Z. The official
+  # ruby images ship arm/ppc64le/s390x for 3.3/3.4/4.0, so the fat
+  # layout extends here too - one cell per platform x minor, each
+  # contributing its ext to assemble-fat. Bookworm (glibc 2.36) also
+  # LOWERS the floor the ubuntu:24.04 cells (2.39) had built on.
+  # PGO off: training under qemu costs minutes for single-digit gains
+  # on tiers where working-at-all is the goal.
   build-qemu:
-    name: Build ${{ matrix.platform }} gem (qemu)
+    name: Build ${{ matrix.platform }} ext (qemu, ruby ${{ matrix.ruby }})
     if: always() && !cancelled() && !failure()
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          # emulated arches with no runners; ubuntu:24.04 has every
-          # port. PGO off: training under qemu costs minutes for
-          # single-digit gains on tiers where working-at-all is the goal.
-          - { platform: arm-linux,         qemu: linux/arm/v7 }
-          - { platform: powerpc64le-linux, qemu: linux/ppc64le }
-          - { platform: s390x-linux,       qemu: linux/s390x }
+          - { platform: arm-linux,         qemu: linux/arm/v7, ruby: "3.3" }
+          - { platform: arm-linux,         qemu: linux/arm/v7, ruby: "3.4" }
+          - { platform: arm-linux,         qemu: linux/arm/v7, ruby: "4.0" }
+          - { platform: powerpc64le-linux, qemu: linux/ppc64le, ruby: "3.3" }
+          - { platform: powerpc64le-linux, qemu: linux/ppc64le, ruby: "3.4" }
+          - { platform: powerpc64le-linux, qemu: linux/ppc64le, ruby: "4.0" }
+          - { platform: s390x-linux,       qemu: linux/s390x, ruby: "3.3" }
+          - { platform: s390x-linux,       qemu: linux/s390x, ruby: "3.4" }
+          - { platform: s390x-linux,       qemu: linux/s390x, ruby: "4.0" }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -284,25 +302,26 @@ jobs:
       - name: Ensure binfmt handlers
         run: docker run --privileged --rm tonistiigi/binfmt --install arm,ppc64le,s390x
 
-      - name: Build gem in Ubuntu container
+      - name: Build this ruby minor's extension
         run: |
           docker run --rm --platform "${{ matrix.qemu }}" \
             -v "${PWD}:/work" -w /work \
-            -e GEM_TARGET=${{ matrix.platform }} \
-            ubuntu:24.04 bash -c '
+            -e TEPTRIS_PGO=0 \
+            ruby:${{ matrix.ruby }}-bookworm bash -c '
               set -eux
               apt-get update -qq
-              apt-get install -y --no-install-recommends \
-                build-essential cmake curl ca-certificates ruby-full ruby-dev
-              gem install rake --no-document
+              apt-get install -y --no-install-recommends cmake make gcc g++ git python3 curl ca-certificates >/dev/null
               git config --global --add safe.directory /work || true
-              TEPTRIS_PGO=0 rake "gem:native:${GEM_TARGET}"
+              gem install rake --no-document
+              rake compile
             '
+          ls -la lib/teptris/${{ matrix.ruby }}/
 
       - uses: actions/upload-artifact@v4
         with:
-          name: pkg-${{ matrix.platform }}
-          path: pkg/*.gem
+          name: ext-${{ matrix.platform }}-${{ matrix.ruby }}
+          path: |
+            lib/teptris
 
   # Pre-publish gate: install every ASSEMBLED gem locally and
   # round-trip it on the platform family it targets. Every broken-gem
