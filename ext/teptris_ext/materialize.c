@@ -590,9 +590,195 @@ static VALUE ext_plan_emit(VALUE self, VALUE rb_plan, VALUE toml)
     return out;
 }
 
+
+/* ---- lazy mode (#79) ----------------------------------------------
+ * load_lazy returns a LazyValue wrapping the parsed tree: scalar
+ * access materializes scalars only, tables/arrays stay wrapped until
+ * walked. The document and the borrowed-input String live in a
+ * single owner object every wrapper references, so GC lifetime is
+ * one edge deep. Free order is GC-driven via TypedData dfree. */
+
+static VALUE cLazyOwner, cLazyValue;
+
+typedef struct {
+    teptris_document *doc;
+    VALUE input; /* the borrowed views' buffer */
+} lazy_owner;
+
+typedef struct {
+    VALUE owner; /* LazyOwner: keeps doc + input alive */
+    const teptris_node *node;
+} lazy_value;
+
+static void lazy_owner_free(void *p) {
+    lazy_owner *o = (lazy_owner *)p;
+    if (o->doc != NULL) teptris_document_free(o->doc);
+    xfree(o);
+}
+static size_t lazy_owner_size(const void *p) { return sizeof(lazy_owner); }
+static const rb_data_type_t lazy_owner_type = {
+    "TeptrisExt/LazyOwner",
+    {NULL, lazy_owner_free, lazy_owner_size, NULL, 0},
+    NULL, NULL, RUBY_TYPED_FREE_IMMEDIATELY};
+
+static void lazy_value_mark(void *p) {
+    lazy_value *v = (lazy_value *)p;
+    rb_gc_mark(v->owner);
+}
+static void lazy_value_free(void *p) { xfree(p); }
+static size_t lazy_value_size(const void *p) { return sizeof(lazy_value); }
+static const rb_data_type_t lazy_value_type = {
+    "TeptrisExt/LazyValue",
+    {lazy_value_mark, lazy_value_free, lazy_value_size, NULL, 0},
+    NULL, NULL, RUBY_TYPED_FREE_IMMEDIATELY};
+
+static VALUE lazy_wrap(VALUE owner, const teptris_node *n) {
+    lazy_value *v;
+    VALUE obj = TypedData_Make_Struct(cLazyValue, lazy_value,
+                                      &lazy_value_type, v);
+    v->owner = owner;
+    v->node = n;
+    return obj;
+}
+
+static lazy_value *lazy_self(VALUE self) {
+    lazy_value *v;
+    TypedData_Get_Struct(self, lazy_value, &lazy_value_type, v);
+    return v;
+}
+
+static VALUE ext_load_lazy(VALUE self, VALUE toml) {
+    StringValue(toml);
+    lazy_owner *o;
+    VALUE owner = TypedData_Make_Struct(cLazyOwner, lazy_owner,
+                                        &lazy_owner_type, o);
+    o->doc = NULL;
+    o->input = rb_str_new_frozen(toml); /* borrowed views: own a copy */
+    teptris_status st = teptris_parse(RSTRING_PTR(o->input),
+                                      (size_t)RSTRING_LEN(o->input),
+                                      NULL, &o->doc);
+    if (st != TEPTRIS_OK) {
+        const teptris_error *e = teptris_document_error(o->doc);
+        VALUE ex = rb_exc_new(eParseError, e->message,
+                              (long)strlen(e->message));
+        rb_iv_set(ex, "@line", SIZET2NUM(e->line));
+        rb_iv_set(ex, "@column", SIZET2NUM(e->column));
+        rb_exc_raise(ex); /* owner GC-frees the failed doc */
+    }
+    return lazy_wrap(owner, teptris_document_root(o->doc));
+}
+
+static VALUE lazy_kind(VALUE self) {
+    switch (teptris_node_kind(lazy_self(self)->node)) {
+    case TEPTRIS_TABLE: return ID2SYM(rb_intern("table"));
+    case TEPTRIS_ARRAY: return ID2SYM(rb_intern("array"));
+    default: return ID2SYM(rb_intern("scalar"));
+    }
+}
+
+static VALUE lazy_size(VALUE self) {
+    const teptris_node *n = lazy_self(self)->node;
+    switch (teptris_node_kind(n)) {
+    case TEPTRIS_TABLE: return SIZET2NUM(teptris_node_table_length(n));
+    case TEPTRIS_ARRAY: return SIZET2NUM(teptris_node_array_length(n));
+    default: return Qnil;
+    }
+}
+
+/* table: iterate entries; array: iterate items; scalar: raise */
+static VALUE lazy_each(VALUE self) {
+    RETURN_SIZED_ENUMERATOR(self, 0, 0, 0);
+    const teptris_node *n = lazy_self(self)->node;
+    switch (teptris_node_kind(n)) {
+    case TEPTRIS_TABLE: {
+        size_t len = teptris_node_table_length(n);
+        for (size_t i = 0; i < len; i++) {
+            teptris_view key;
+            const teptris_node *v = teptris_node_table_at(n, i, &key);
+            VALUE kv = rb_ary_new_capa(2);
+            rb_ary_push(kv, rb_enc_str_new(key.ptr, (long)key.len,
+                                           rb_utf8_encoding()));
+            rb_ary_push(kv, lazy_wrap(lazy_self(self)->owner, v));
+            rb_yield(kv);
+        }
+        break;
+    }
+    case TEPTRIS_ARRAY: {
+        size_t len = teptris_node_array_length(n);
+        for (size_t i = 0; i < len; i++)
+            rb_yield(lazy_wrap(lazy_self(self)->owner,
+                               teptris_node_array_at(n, i)));
+        break;
+    }
+    default:
+        rb_raise(eError, "scalar node has nothing to iterate");
+    }
+    return self;
+}
+
+/* [] is polymorphic by node kind: tables take string keys (hash
+ * index), arrays take integer indices (contiguous array) - both O(1)
+ * per access, which is the whole point of the lazy mode */
+static VALUE lazy_get(VALUE self, VALUE key) {
+    lazy_value *v = lazy_self(self);
+    const teptris_node *child = NULL;
+    switch (teptris_node_kind(v->node)) {
+    case TEPTRIS_TABLE: {
+        const char *k;
+        long kl;
+        if (RB_TYPE_P(key, T_STRING)) {
+            k = RSTRING_PTR(key); kl = RSTRING_LEN(key);
+        } else {
+            key = rb_funcall(key, rb_intern("to_s"), 0);
+            k = RSTRING_PTR(key); kl = RSTRING_LEN(key);
+        }
+        child = teptris_node_table_get(v->node, k, (size_t)kl);
+        break;
+    }
+    case TEPTRIS_ARRAY: {
+        long i = NUM2LONG(key);
+        if (i < 0) i += (long)teptris_node_array_length(v->node);
+        child = teptris_node_array_at(v->node, (size_t)i);
+        break;
+    }
+    default:
+        rb_raise(eError, "scalar node is not subscriptable");
+    }
+    if (child == NULL) return Qnil;
+    return lazy_wrap(v->owner, child);
+}
+
+static VALUE lazy_dig(int argc, VALUE *argv, VALUE self) {
+    VALUE cur = self;
+    for (long i = 0; i < argc; i++) {
+        VALUE nxt = rb_funcall(cur, rb_intern("[]"), 1, argv[i]);
+        if (nxt == Qnil || nxt == Qundef) return Qnil;
+        cur = nxt;
+    }
+    return cur;
+}
+
+/* full materialization: the eager path, owned */
+static VALUE lazy_to(VALUE self) {
+    lazy_value *v = lazy_self(self);
+    return obj_from_node(v->node, 0);
+}
+
 void Init_teptris_ext(void) {
     VALUE m = rb_define_module("TeptrisExt");
     rb_define_module_function(m, "load", ext_load, -1);
+    rb_define_module_function(m, "load_lazy", ext_load_lazy, 1);
+    cLazyOwner = rb_define_class_under(m, "LazyOwner", rb_cObject);
+    cLazyValue = rb_define_class_under(m, "LazyValue", rb_cObject);
+    rb_define_method(cLazyValue, "kind", lazy_kind, 0);
+    rb_define_method(cLazyValue, "size", lazy_size, 0);
+    rb_define_method(cLazyValue, "each", lazy_each, 0);
+    rb_define_method(cLazyValue, "[]", lazy_get, 1);
+    rb_define_method(cLazyValue, "at", lazy_get, 1);
+    rb_define_method(cLazyValue, "dig", lazy_dig, -1);
+    rb_define_method(cLazyValue, "to_h", lazy_to, 0);
+    rb_define_method(cLazyValue, "to_a", lazy_to, 0);
+    rb_define_method(cLazyValue, "value", lazy_to, 0);
     rb_define_module_function(m, "dump", ext_dump, 1);
     rb_define_module_function(m, "engine_version", ext_version, 0);
     rb_define_module_function(m, "plan_build", ext_plan_build, 2);
