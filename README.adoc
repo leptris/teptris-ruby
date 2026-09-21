@@ -190,7 +190,36 @@ framework side (interpretive), matching the yeptris-ruby#184 split.
 `load_lazy` is the complementary path when the plan is not known up
 front: one parse, host objects only along touched paths.
 
-Batch / many-small (`load_batch`) is tracked but not blocking — same
-shape as the yeptris-ruby lutaml-model TODO.
+=== Many-small batch (`load_batch` / `load_files` / `load_lazy_batch`)
+
+When the corpus is N TOML documents rather than one (unitsml-style
+streams, config splits, log shards), accept an Array (or list of
+file paths) and ship one C call:
+
+[source,ruby]
+----
+# Eager: one Array of Hashes, same datetime contract as TOML.load
+docs = Teptris::TOML.load_batch(toml_strings,
+                                safe_load: [Time, Date],
+                                datetime_policy: :native)
+
+# File paths
+docs = Teptris::TOML.load_files(["a.toml", "b.toml", "c.toml"])
+
+# Lazy twin: parse N eagerly, materialize only along touched paths
+arr  = Teptris::TOML.load_lazy_batch(toml_strings)
+arr.each { |doc| doc["x"].value }   # touches one path per doc
+----
+
+**Perf shape** (best-of-N on ubuntu-latest, ruby 3.3, 2026-09-21):
+eager `load_batch` is a wash or slower than per-doc `load` for tiny /
+medium docs (Ruby's per-doc dispatch is amortized by JIT; the batch's
+C-side scratch + tight Ruby allocation loses on those shapes) and a
+clear win for large docs. The shared-options parsing (one safe_load /
+datetime_policy check per call) and per-doc error report (a single
+`ParseError` carrying the failing doc's line/column) make eager
+`load_batch` a useful API even where it isn't a speedup.
+`load_lazy_batch` is the real many-small speedup when materialization
+is deferred — parse-only across the batch, no per-doc Hash work.
 
 Gem publishing and version numbers are USER release decisions.
