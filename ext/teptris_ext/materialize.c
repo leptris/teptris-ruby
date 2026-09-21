@@ -764,10 +764,174 @@ static VALUE lazy_to(VALUE self) {
     return obj_from_node(v->node, 0);
 }
 
+/* ---------------------------------------------------------------- batch --
+ * Many-small batch path (teptris-ruby#108 ask 3, complements the C
+ * `teptris_parse_batch`): accept an Array of TOML strings + an options
+ * hash, parse every entry in one C call (one opts struct, one
+ * per-doc-status report), and return one Ruby Hash per document. The
+ * options bag is parsed ONCE and shared across the batch — per-doc
+ * safe_load/datetime_policy work happens in C, not in N Ruby frames.
+ * On the alloc-fail path the C call leaves no partial docs; the Ruby
+ * caller sees a Teptris::Error. Per-doc parse failures are collected
+ * alongside the successes in a parallel array (the lazy variant
+ * raises on the first failure so callers can `rescue` without losing
+ * the partial batch). */
+
+/* Combined scratch layout — one alloc, four arrays packed end-to-end.
+ * Splitting into four mallocs showed up as the dominant cost in the
+ * per-doc benchmark for tiny docs (4× malloc/free per call, 16–64 KB
+ * of scratch per call). One alloc amortizes the heap and the cache. */
+typedef struct {
+    const char **data;
+    size_t *lens;
+    teptris_document **docs;
+    teptris_status *statuses;
+} batch_scratch;
+
+static void batch_scratch_free(batch_scratch *s) {
+    free(s->data);
+    free(s);
+}
+
+static batch_scratch *batch_scratch_alloc(long n) {
+    batch_scratch *s = (batch_scratch *)malloc(sizeof(*s));
+    if (s == NULL) return NULL;
+    size_t bytes =
+        (size_t)n * (sizeof(const char *) + sizeof(size_t) +
+                     sizeof(teptris_document *) + sizeof(teptris_status));
+    void *blob = malloc(bytes);
+    if (blob == NULL) {
+        free(s);
+        return NULL;
+    }
+    char *p = (char *)blob;
+    s->data = (const char **)p;
+    p += (size_t)n * sizeof(const char *);
+    s->lens = (size_t *)p;
+    p += (size_t)n * sizeof(size_t);
+    s->docs = (teptris_document **)p;
+    p += (size_t)n * sizeof(teptris_document *);
+    s->statuses = (teptris_status *)p;
+    return s;
+}
+
+static unsigned flags_from_opts(VALUE opts) {
+    unsigned flags = 0;
+    if (NIL_P(opts)) return 0;
+    VALUE sd = rb_hash_aref(opts, ID2SYM(rb_intern("string_datetimes")));
+    VALUE ft = rb_hash_aref(opts, ID2SYM(rb_intern("forbid_time")));
+    VALUE fd = rb_hash_aref(opts, ID2SYM(rb_intern("forbid_date")));
+    if (RTEST(sd)) flags |= FMT_STRING_DATES;
+    if (RTEST(ft)) flags |= FMT_FORBID_TIME;
+    if (RTEST(fd)) flags |= FMT_FORBID_DATE;
+    return flags;
+}
+
+/* Parse-only batch (returns an Array of Lazy wrappers, one per doc):
+ * eager parse, deferred materialization. Same per-doc error semantics
+ * as ext_load_lazy. */
+static VALUE ext_load_lazy_batch(VALUE self, VALUE strings) {
+    Check_Type(strings, T_ARRAY);
+    long n = RARRAY_LEN(strings);
+    if (n == 0) return rb_ary_new();
+    batch_scratch *s = batch_scratch_alloc(n);
+    if (s == NULL) rb_raise(eError, "out of memory batching %ld documents", n);
+    for (long i = 0; i < n; i++) {
+        VALUE str = rb_ary_entry(strings, i);
+        StringValue(str); /* raises TypeError if not coercible */
+        s->data[i] = RSTRING_PTR(str);
+        s->lens[i] = (size_t)RSTRING_LEN(str);
+    }
+    teptris_status batch =
+        teptris_parse_batch(s->data, s->lens, (size_t)n, NULL,
+                            s->docs, s->statuses);
+    if (batch != TEPTRIS_OK) {
+        batch_scratch_free(s);
+        rb_raise(eError, "batch parse failed (status %d)", (int)batch);
+    }
+    long first_fail = -1;
+    for (long i = 0; i < n; i++) {
+        if (s->statuses[i] != TEPTRIS_OK && first_fail == -1) first_fail = i;
+    }
+    if (first_fail != -1) {
+        const teptris_error *e = teptris_document_error(s->docs[first_fail]);
+        VALUE ex =
+            rb_exc_new(eParseError, e->message, (long)strlen(e->message));
+        rb_iv_set(ex, "@line", SIZET2NUM(e->line));
+        rb_iv_set(ex, "@column", SIZET2NUM(e->column));
+        for (long i = 0; i < n; i++) teptris_document_free(s->docs[i]);
+        batch_scratch_free(s);
+        rb_exc_raise(ex);
+    }
+    VALUE out = rb_ary_new_capa(n);
+    for (long i = 0; i < n; i++) {
+        lazy_owner *o;
+        VALUE owner = TypedData_Make_Struct(cLazyOwner, lazy_owner,
+                                            &lazy_owner_type, o);
+        o->doc = s->docs[i];
+        o->input = rb_ary_entry(strings, i);
+        rb_ary_push(out, lazy_wrap(owner, teptris_document_root(s->docs[i])));
+    }
+    batch_scratch_free(s);
+    return out;
+}
+
+/* Eager batch: returns Array of Hashes with the same datetime contract
+ * as ext_load. opts is parsed once; safe_load semantics apply uniformly.
+ * The caller's input Array is read-only; its strings stay referenced
+ * for the duration of the C call (no separate keeper Array). */
+static VALUE ext_load_batch(int argc, VALUE *argv, VALUE self) {
+    VALUE strings, opts;
+    rb_scan_args(argc, argv, "11", &strings, &opts);
+    Check_Type(strings, T_ARRAY);
+    long n = RARRAY_LEN(strings);
+    if (n == 0) return rb_ary_new();
+    unsigned flags = flags_from_opts(opts);
+    batch_scratch *s = batch_scratch_alloc(n);
+    if (s == NULL) rb_raise(eError, "out of memory batching %ld documents", n);
+    for (long i = 0; i < n; i++) {
+        VALUE str = rb_ary_entry(strings, i);
+        StringValue(str);
+        s->data[i] = RSTRING_PTR(str);
+        s->lens[i] = (size_t)RSTRING_LEN(str);
+    }
+    teptris_status batch =
+        teptris_parse_batch(s->data, s->lens, (size_t)n, NULL,
+                            s->docs, s->statuses);
+    if (batch != TEPTRIS_OK) {
+        batch_scratch_free(s);
+        rb_raise(eError, "batch parse failed (status %d)", (int)batch);
+    }
+    long first_fail = -1;
+    for (long i = 0; i < n; i++) {
+        if (s->statuses[i] != TEPTRIS_OK && first_fail == -1) first_fail = i;
+    }
+    if (first_fail != -1) {
+        const teptris_error *e = teptris_document_error(s->docs[first_fail]);
+        VALUE ex =
+            rb_exc_new(eParseError, e->message, (long)strlen(e->message));
+        rb_iv_set(ex, "@line", SIZET2NUM(e->line));
+        rb_iv_set(ex, "@column", SIZET2NUM(e->column));
+        for (long i = 0; i < n; i++) teptris_document_free(s->docs[i]);
+        batch_scratch_free(s);
+        rb_exc_raise(ex);
+    }
+    VALUE out = rb_ary_new_capa(n);
+    for (long i = 0; i < n; i++) {
+        const teptris_node *root = teptris_document_root(s->docs[i]);
+        rb_ary_store(out, i, obj_from_node(root, flags));
+        teptris_document_free(s->docs[i]);
+    }
+    batch_scratch_free(s);
+    return out;
+}
+
 void Init_teptris_ext(void) {
     VALUE m = rb_define_module("TeptrisExt");
     rb_define_module_function(m, "load", ext_load, -1);
     rb_define_module_function(m, "load_lazy", ext_load_lazy, 1);
+    rb_define_module_function(m, "load_batch", ext_load_batch, -1);
+    rb_define_module_function(m, "load_lazy_batch", ext_load_lazy_batch, 1);
     cLazyOwner = rb_define_class_under(m, "LazyOwner", rb_cObject);
     cLazyValue = rb_define_class_under(m, "LazyValue", rb_cObject);
     rb_define_method(cLazyValue, "kind", lazy_kind, 0);

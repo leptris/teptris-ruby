@@ -46,6 +46,32 @@ module Teptris
         TeptrisExt.load_lazy(toml)
       end
 
+      # Many-small batch path (teptris-ruby#108 ask 3): parse N inputs
+      # in one C call, share the safe_load/datetime_policy options
+      # struct across the batch, return one eager Hash per document.
+      # Same datetime contract as load. A failing document raises
+      # Teptris::ParseError carrying the first failure's line/column.
+      def load_batch(tomls, safe_load: nil, datetime_policy: :native)
+        _validate_batch!(tomls, safe_load, datetime_policy)
+        TeptrisExt.load_batch(tomls, _safe_load_opts(safe_load, datetime_policy))
+      end
+
+      # Lazy twin of load_batch: parse N inputs eagerly, hand back an
+      # Array of Lazy wrappers — materialization happens only on access.
+      # Same per-doc error semantics as load_lazy (first failure raises).
+      def load_lazy_batch(tomls)
+        _validate_batch!(tomls, nil, :native)
+        TeptrisExt.load_lazy_batch(tomls)
+      end
+
+      # Many-small path with file paths: read each file, then call
+      # load_batch. Symmetric with load_file's single-doc shape.
+      def load_files(paths, safe_load: nil, datetime_policy: :native)
+        _validate_batch!(paths, safe_load, datetime_policy, kind: :paths)
+        load_batch(paths.map { |p| File.read(p) },
+                   safe_load: safe_load, datetime_policy: datetime_policy)
+      end
+
       # One-pass schema materialization over a compiled
       # Teptris::Descriptor: unplanned keys are never materialized
       # (teptris#46).
@@ -70,6 +96,31 @@ module Teptris
 
       def dump(obj)
         TeptrisExt.dump(obj)
+      end
+
+      private
+
+      def _validate_batch!(input, safe_load, datetime_policy, kind: :strings)
+        unless input.is_a?(Array)
+          raise ArgumentError, "expected Array of #{kind}, got #{input.class}"
+        end
+        if !safe_load.nil? && !safe_load.is_a?(Array) && !safe_load.is_a?(Symbol)
+          raise ArgumentError, "safe_load must be nil, an Array, or a Symbol"
+        end
+        unless %i[native string].include?(datetime_policy)
+          raise ArgumentError, "datetime_policy must be :native or :string"
+        end
+      end
+
+      def _safe_load_opts(safe_load, datetime_policy)
+        opts = {}
+        opts[:string_datetimes] = true if datetime_policy == :string
+        if safe_load && datetime_policy == :native
+          permitted = Array(safe_load) + [:__scalar]
+          opts[:forbid_time] = true unless permitted.include?(Time)
+          opts[:forbid_date] = true unless permitted.include?(Date)
+        end
+        opts.empty? ? nil : opts
       end
     end
   end
