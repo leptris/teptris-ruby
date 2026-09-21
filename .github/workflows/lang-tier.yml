@@ -42,4 +42,4 @@ jobs:
         run: python3 libteptris-src/scripts/gen_bench_corpus.py corpus
 
       - name: Bench teptris vs tomlib vs tomlrb
-        run: ruby benchmark/lang_tier.rb corpus 12
+        run: bundle exec ruby benchmark/lang_tier.rb corpus 12
