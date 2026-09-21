@@ -6,6 +6,29 @@ leptris-ruby (XML) and yeptris-ruby (YAML+JSON). API-shape and value
 semantics mirror the `tomlib` gem: offset and local datetimes become
 `Time`, dates become `Date`, local times stay `String`.
 
+== Performance (end-to-end, Ruby tier)
+
+Best-of-8 runs on a GitHub ubuntu-latest runner (ruby 3.3), 2026-09-21,
+over the generated bench corpus (~700 KB per shape). Full per-shape
+table regenerated on every main push by the `lang-tier` lane.
+
+|===
+|Shape |teptris |tomlib 0.7.3 |tomlrb 2.0.4
+
+|array_heavy |3.0 ms / 237 MB/s |21.7 ms / 33 MB/s |532 ms / 1.4 MB/s
+|cargo_like |4.0 ms / 88 MB/s |66.7 ms / 5.3 MB/s |307 ms / 1.2 MB/s
+|datetime_heavy |31.4 ms / 34 MB/s |12,837 ms / 0.1 MB/s |792 ms / 1.4 MB/s
+|deep_tables |2.9 ms / 84 MB/s |7.0 ms / 35 MB/s |247 ms / 1.0 MB/s
+|mixed |6.2 ms / 70 MB/s |17.2 ms / 25 MB/s |427 ms / 1.0 MB/s
+|scalar_float |16.8 ms / 88 MB/s |18,761 ms / 0.1 MB/s |855 ms / 1.7 MB/s
+|scalar_int |14.8 ms / 87 MB/s |15,135 ms / 0.1 MB/s |868 ms / 1.5 MB/s
+|scalar_string |9.1 ms / 142 MB/s |3,587 ms / 0.4 MB/s |430 ms / 3.0 MB/s
+|===
+
+teptris is 7-110x tomlib and 20-280x tomlrb per shape end to end
+(parse + materialize into Ruby objects); tomlib's scalar-heavy cliffs
+are its datetime/number paths.
+
 == Install
 
 ....
