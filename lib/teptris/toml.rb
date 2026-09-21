@@ -36,6 +36,16 @@ module Teptris
         TeptrisExt.load(toml, opts)
       end
 
+      # Lazy load: returns a wrapper that parses eagerly (one pass)
+      # but materializes host objects only along the paths actually
+      # accessed. Same datetime contract as load; to_h/to_a flatten to
+      # the eager shape.
+      def load_lazy(toml)
+        raise ArgumentError, "input must be a String" unless toml.is_a?(String)
+
+        TeptrisExt.load_lazy(toml)
+      end
+
       # One-pass schema materialization over a compiled
       # Teptris::Descriptor: unplanned keys are never materialized
       # (teptris#46).
