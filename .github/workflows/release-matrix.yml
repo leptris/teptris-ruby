@@ -285,15 +285,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { platform: arm-linux,         qemu: linux/arm/v7, ruby: "3.3" }
-          - { platform: arm-linux,         qemu: linux/arm/v7, ruby: "3.4" }
-          - { platform: arm-linux,         qemu: linux/arm/v7, ruby: "4.0" }
-          - { platform: powerpc64le-linux, qemu: linux/ppc64le, ruby: "3.3" }
-          - { platform: powerpc64le-linux, qemu: linux/ppc64le, ruby: "3.4" }
-          - { platform: powerpc64le-linux, qemu: linux/ppc64le, ruby: "4.0" }
-          - { platform: s390x-linux,       qemu: linux/s390x, ruby: "3.3" }
-          - { platform: s390x-linux,       qemu: linux/s390x, ruby: "3.4" }
-          - { platform: s390x-linux,       qemu: linux/s390x, ruby: "4.0" }
+          - { platform: arm-linux,         qemu: linux/arm/v7, ruby: "3.3", distro: "-bookworm" }
+          - { platform: arm-linux,         qemu: linux/arm/v7, ruby: "3.4", distro: "-bookworm" }
+          - { platform: arm-linux,         qemu: linux/arm/v7, ruby: "4.0", distro: "-bookworm" }
+          - { platform: powerpc64le-linux, qemu: linux/ppc64le, ruby: "3.3", distro: "-bookworm" }
+          - { platform: powerpc64le-linux, qemu: linux/ppc64le, ruby: "3.4", distro: "-bookworm" }
+          - { platform: powerpc64le-linux, qemu: linux/ppc64le, ruby: "4.0", distro: "-bookworm" }
+          # bookworm ruby images carry arm + ppc64le but NOT s390x;
+          # the plain tags (trixie) do
+          - { platform: s390x-linux,       qemu: linux/s390x, ruby: "3.3", distro: "" }
+          - { platform: s390x-linux,       qemu: linux/s390x, ruby: "3.4", distro: "" }
+          - { platform: s390x-linux,       qemu: linux/s390x, ruby: "4.0", distro: "" }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -307,7 +309,7 @@ jobs:
           docker run --rm --platform "${{ matrix.qemu }}" \
             -v "${PWD}:/work" -w /work \
             -e TEPTRIS_PGO=0 \
-            ruby:${{ matrix.ruby }}-bookworm bash -c '
+            ruby:${{ matrix.ruby }}${{ matrix.distro }} bash -c '
               set -eux
               apt-get update -qq
               apt-get install -y --no-install-recommends cmake make gcc g++ git python3 curl ca-certificates >/dev/null
