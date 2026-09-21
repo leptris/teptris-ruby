@@ -52,7 +52,8 @@ static, self-contained)
 |x86_64-linux, aarch64-linux (fat) | 3.3–4.0 | one ext per minor; GLIBC >= 2.14 (x86_64) / 2.17 (aarch64)
 |x86_64-linux-musl, aarch64-linux-musl (fat) | 3.3–4.0 | one ext per minor; built in Alpine containers
 |arm-linux, arm-linux-musl | 3.3 | 32-bit ARM; qemu-emulated build (no PGO), single minor
-|powerpc64le-linux, s390x-linux | 3.3 | big-endian servers; qemu-emulated builds (no PGO), single minor
+|powerpc64le-linux, s390x-linux (fat) | 3.3–4.0 | big-endian servers; qemu-emulated builds (no PGO)
+|s390x-linux-musl | 3.3 | Alpine on IBM Z; qemu-emulated (no PGO), single minor (alpine 3.4+/4.0 s390x images not published)
 |x86_64-darwin, arm64-darwin (fat) | 3.3–4.0 | one ext per minor; macOS >= 11.0
 |x64-mingw32 (fat) | 3.0 | msvcrt-era RubyInstaller
 |x64-mingw-ucrt (fat) | 3.1–4.0 | one ext per Ruby minor
@@ -133,5 +134,63 @@ rescue Teptris::ParseError => e
   e.column # 8
 end
 ----
+
+=== Descriptor plan path (lutaml-model recipe)
+
+Compile a plan once, materialize only the planned keys in one native
+pass (`Teptris::Descriptor` / `Teptris::TOML.load_schema`, shipped since
+0.2.29; C ABI in libteptris `teptris/plan.h`). The walk returns a
+**nested Hash with String keys and already-cast Ruby values** — the
+shape `Serializable.instantiate` wants after a wire→attr rename, not
+the column-array shape of `Yeptris::Schema`.
+
+[source,ruby]
+----
+# MappingHash-shaped model: wire names match TOML keys.
+DESC = Teptris::Descriptor.build(
+  children: [
+    { name: "id",    kind: :scalar },
+    { name: "name",  kind: :scalar },
+    { name: "tags",  kind: :collection },          # array of scalars
+    { name: "items", kind: :nested, plan: {        # table or [[array-of-tables]]
+      children: [
+        { name: "sku",   kind: :scalar },
+        { name: "qty",   kind: :scalar },
+      ] } },
+    { name: "extra", kind: :raw },                 # escape hatch: full subtree
+  ])
+
+# compile once per model class; reuse across documents
+h = Teptris::TOML.load_schema(toml_string, DESC)
+# => {
+#   "id"=>1, "name"=>"widget", "tags"=>["a","b"],
+#   "items"=>[{"sku"=>"x","qty"=>2}, ...],
+#   "extra"=>{"whatever"=>true},   # or nil if absent
+# }
+# unplanned keys never appear
+
+# lutaml-model adapter half (illustrative):
+#   kwargs = mapping.wire_to_attrs(h)   # rename + symbolize
+#   Model.instantiate(**kwargs)
+----
+
+Row kinds:
+
+* `:scalar` — any TOML value (String/Integer/Float/true/false/Time/Date)
+* `:collection` — array of scalars
+* `:nested` — recurse via `plan:`; also spans arrays of tables
+* `:raw` — the untouched native subtree (callback/escape hatch)
+
+Absent planned keys read as `nil`. Type tags are **not** declared on
+the Ruby surface: TOML already carries the value kind, and the walk
+materializes the same datetime contract as `TOML.load`. Wire→attr
+renames, `when_attribute`, and polymorphic partitions stay on the
+framework side (interpretive), matching the yeptris-ruby#184 split.
+
+`load_lazy` is the complementary path when the plan is not known up
+front: one parse, host objects only along touched paths.
+
+Batch / many-small (`load_batch`) is tracked but not blocking — same
+shape as the yeptris-ruby lutaml-model TODO.
 
 Gem publishing and version numbers are USER release decisions.
