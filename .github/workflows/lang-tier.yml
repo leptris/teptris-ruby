@@ -1,0 +1,45 @@
+# The end-to-end language tier (issue #99): teptris vs the Ruby TOML
+# libraries users actually choose between, over the bench corpus.
+# Informational, not a gate - competitor versions drift by design;
+# the numbers feed the README's performance section. Run on every
+# main push so they track releases.
+name: lang-tier
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lang-tier-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ruby-vs-tomlib-tomlrb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # corpus generator lives in the engine repo at the pin
+      - uses: actions/checkout@v4
+        with:
+          repository: leptris/teptris
+          path: libteptris-src
+          ref: v0.1.24
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Compile the extension (engine vendors from the pin)
+        run: rake compile
+
+      - name: Generate the corpus
+        run: python3 libteptris-src/scripts/gen_bench_corpus.py corpus
+
+      - name: Bench teptris vs tomlib vs tomlrb
+        run: ruby benchmark/lang_tier.rb corpus 12
