@@ -173,6 +173,7 @@ platforms = [
   "arm-linux-musl",
   "powerpc64le-linux",
   "s390x-linux",
+  "s390x-linux-musl",
   "x86_64-darwin",
   "arm64-darwin",
 ].freeze
