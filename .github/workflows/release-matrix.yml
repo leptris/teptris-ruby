@@ -173,7 +173,7 @@ jobs:
         if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw32')
         with: { ruby-version: '3.0', bundler-cache: false }
         continue-on-error: true
-      - name: win ext 3.0 (mingw32)
+      - name: win ext 3.0 (mingw32) + stage its ext aside
         if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw32')
         shell: bash
         run: |
@@ -181,26 +181,27 @@ jobs:
           # needs only rake — detach from the Gemfile entirely
           BUNDLE_GEMFILE=/dev/null rake compile
           ls lib/teptris/3.0/
-          # stage ONLY the 3.0 ext: the mingw32 gem must not carry the
-          # ucrt minors built above (snapshot hygiene)
-          rm -rf /tmp/mingw32-stage && mkdir -p /tmp/mingw32-stage
-          cp -R lib/teptris/3.0 /tmp/mingw32-stage/
-      - name: Upload x64-mingw32 exts
-        if: contains(matrix.platforms, 'x64-mingw32')
-        uses: actions/upload-artifact@v4
-        with:
-          name: ext-x64-mingw32
-          path: /tmp/mingw32-stage
-
-      # ucrt artifact FIRST: the mingw32 (3.0) build below adds an
-      # msvcrt-binding ext to lib/teptris — the ucrt gem must not
-      # carry it (upload snapshots lib/teptris at THIS point).
+          # move 3.0 OUT of lib/teptris BEFORE the ucrt artifact
+          # snapshot: the ucrt gem must not carry the msvcrt ext
+          # (0.2.40 class). Staged inside the WORKSPACE — upload
+          # -artifact's node glob can't resolve /tmp on Windows.
+          rm -rf stage-m32 && mkdir -p stage-m32
+          mv lib/teptris/3.0 stage-m32/3.0
+      # ucrt artifact snapshots WITHOUT 3.0 inside
       - name: Upload x64-mingw-ucrt exts
         if: contains(matrix.platforms, 'x64-mingw-ucrt')
         uses: actions/upload-artifact@v4
         with:
           name: ext-x64-mingw-ucrt
           path: lib/teptris
+      # mingw32 artifact: the staged 3.0 alone (LCA = stage-m32, so
+      # the artifact root carries 3.0/teptris_ext.dll)
+      - name: Upload x64-mingw32 exts
+        if: contains(matrix.platforms, 'x64-mingw32')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ext-x64-mingw32
+          path: stage-m32
       - name: Upload aarch64-mingw-ucrt exts
         if: contains(matrix.platforms, 'aarch64-mingw-ucrt')
         uses: actions/upload-artifact@v4
