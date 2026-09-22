@@ -404,7 +404,7 @@ jobs:
             echo "::error::fewer than two valid variants to compare"
             exit 1
           fi
-          first=$(ls /tmp/parity | head -1)
+          first=$(cd /tmp/parity && set -- * && echo "$1")
           ref_list="/tmp/parity/$first/list.txt"
           ref_hashes=$(cd "/tmp/parity/$first" && xargs md5sum < list.txt | sort -k2)
           for d in /tmp/parity/*/; do
@@ -420,7 +420,7 @@ jobs:
               exit 1
             }
           done
-          echo "Ruby sources byte-identical across $(ls /tmp/parity | wc -l | tr -d ' ') variants"
+          echo "Ruby sources byte-identical across $valid variants"
 
       - name: Verify the glibc + musl fat gems and the source gem
         if: matrix.suffix == 'linux-all'
