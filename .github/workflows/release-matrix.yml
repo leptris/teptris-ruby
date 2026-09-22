@@ -373,6 +373,55 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby }}
 
+      # The leptris-ruby pattern's skew gate: every variant must ship
+      # byte-identical lib/**/*.rb. A diff means one cell packaged from
+      # a different source state (the #318 class — a mingw-only
+      # Ruby/natives mismatch surfaced as NameErrors in host apps; the
+      # per-gem round-trips above cannot catch it because each install
+      # validates against its OWN sources).
+      - name: Verify Ruby-source parity across platform variants
+        if: matrix.suffix == 'linux-all'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/parity && mkdir -p /tmp/parity
+          valid=0
+          for gem in pkg/*.gem; do
+            name=$(basename "$gem" .gem)
+            # a .gem's OUTER container is a plain POSIX tar, not gzip
+            if ! tar tf "$gem" >/dev/null 2>&1; then
+              echo "::warning::$name is not a readable gem archive — skipping parity for it"
+              continue
+            fi
+            d="/tmp/parity/$name"
+            mkdir -p "$d"
+            tar xf "$gem" -C "$d" data.tar.gz
+            tar xf "$d/data.tar.gz" -C "$d"
+            find "$d/lib" -name '*.rb' -type f | sed "s|$d/||" | sort > "$d/list.txt"
+            valid=$((valid + 1))
+          done
+          if [ "$valid" -lt 2 ]; then
+            echo "::error::fewer than two valid variants to compare"
+            exit 1
+          fi
+          first=$(ls /tmp/parity | head -1)
+          ref_list="/tmp/parity/$first/list.txt"
+          ref_hashes=$(cd "/tmp/parity/$first" && xargs md5sum < list.txt | sort -k2)
+          for d in /tmp/parity/*/; do
+            name=$(basename "$d")
+            [ "$name" = "$first" ] && continue
+            diff -q "$ref_list" "$d/list.txt" >/dev/null || {
+              echo "::error::$name ships a different lib/**/*.rb file set than $first"
+              exit 1
+            }
+            hashes=$(cd "$d" && xargs md5sum < list.txt | sort -k2)
+            diff -q <(echo "$ref_hashes") <(echo "$hashes") >/dev/null || {
+              echo "::error::$name Ruby sources differ from $first (version skew)"
+              exit 1
+            }
+          done
+          echo "Ruby sources byte-identical across $(ls /tmp/parity | wc -l | tr -d ' ') variants"
+
       - name: Verify the glibc + musl fat gems and the source gem
         if: matrix.suffix == 'linux-all'
         shell: bash
