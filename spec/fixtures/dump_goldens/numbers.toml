@@ -1,0 +1,9 @@
+int = 9223372036854775807
+neg = -17
+hex = 3735928559
+oct = 493
+bin = 214
+float = 6.626e-34
+negzero = -0.0
+inf = inf
+ninf = -inf

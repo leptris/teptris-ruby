@@ -51,7 +51,19 @@ static VALUE dt_string(const teptris_datetime *d, int kind) {
         const char *head = (kind == TEPTRIS_TIME_LOCAL) ? "" : "";
         (void)head;
         if (kind == TEPTRIS_TIME_LOCAL) {
-            l = snprintf(buf, sizeof buf, "%02u:%02u:%02u", d->hour, d->minute, d->second);
+            /* tomlib's contract keeps the fraction at millisecond
+             * precision (00:32:00.999); drop it entirely when zero.
+             * The engine preserves full nanoseconds — the binding
+             * truncates to the reference shape. */
+            if (d->nanosecond != 0) {
+                unsigned ms = (d->nanosecond + 500000u) / 1000000u;
+                if (ms == 1000u) ms = 999u; /* rounding overflow guard */
+                l = snprintf(buf, sizeof buf, "%02u:%02u:%02u.%03u",
+                             d->hour, d->minute, d->second, ms);
+            } else {
+                l = snprintf(buf, sizeof buf, "%02u:%02u:%02u",
+                             d->hour, d->minute, d->second);
+            }
         } else {
             l = snprintf(buf, sizeof buf, "%04d-%02u-%02uT%02u:%02u:%02u",
                          d->year, d->month, d->day, d->hour, d->minute, d->second);
