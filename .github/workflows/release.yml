@@ -13,6 +13,7 @@ on:
 permissions:
   contents: write
   id-token: write
+  actions: read  # release-matrix's assemble pulls ext artifacts by run id
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
