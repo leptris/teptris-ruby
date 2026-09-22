@@ -397,6 +397,11 @@ jobs:
             mkdir -p "$d"
             tar xf "$gem" -C "$d" data.tar.gz
             tar xf "$d/data.tar.gz" -C "$d"
+            # EOL-normalize before hashing: the README contract is
+            # "byte-identical EOLs aside" — the mingw cells package
+            # CRLF sources, everything else LF.
+            find "$d/lib" -name '*.rb' -type f -exec sh -c \
+              'tr -d "\r" < "$1" > "$1.norm" && mv "$1.norm" "$1"' _ {} \;
             find "$d/lib" -name '*.rb' -type f | sed "s|$d/||" | sort > "$d/list.txt"
             valid=$((valid + 1))
           done
