@@ -217,7 +217,12 @@ jobs:
 
   assemble-fat:
     name: Assemble fat gems (${{ matrix.group }})
-    needs: [build, build-musl]
+    # needs build-qemu too: the emulated exts feed two of these
+    # platforms. The old 61-job queue saturation accidentally masked
+    # this race (qemu cells always finished before assemble got a
+    # slot); the batched train runs assemble sooner, so the edge is
+    # explicit now.
+    needs: [build, build-musl, build-qemu]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 45
