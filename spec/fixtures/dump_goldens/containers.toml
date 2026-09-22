@@ -1,0 +1,18 @@
+title = 'root'
+[tbl]
+x = 1
+[tbl.nested]
+a = 2
+b = [3, 4]
+[tbl.deep]
+y = 'z'
+[[aot]]
+n = 1
+tags = ['a', 'b']
+[[aot]]
+n = 2
+tags = []
+[deep]
+[deep.deeper]
+[[deep.deeper.deepest]]
+ok = true

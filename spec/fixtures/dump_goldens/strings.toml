@@ -1,0 +1,4 @@
+s = 'tab	here é é "quoted" back\slash'
+lit = 'C:\Users\no\escapes\here'
+ml = "line1\nline2\n"
+mll = "literal\n  kept\n"
