@@ -150,21 +150,21 @@ jobs:
           rake compile
           ls lib/teptris/3.2/
       - uses: ruby/setup-ruby@master
-        if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw-ucrt')
+        if: runner.os == 'Windows' && contains(matrix.platforms, 'mingw-ucrt') && (matrix.first_minor || '3.3') != '3.4'
         with: { ruby-version: '3.4', bundler-cache: false }
         continue-on-error: true
       - name: win ext 3.4
-        if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw-ucrt')
+        if: runner.os == 'Windows' && contains(matrix.platforms, 'mingw-ucrt') && (matrix.first_minor || '3.3') != '3.4'
         shell: bash
         run: |
           rake compile
           ls lib/teptris/3.4/
       - uses: ruby/setup-ruby@master
-        if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw-ucrt')
+        if: runner.os == 'Windows' && contains(matrix.platforms, 'mingw-ucrt')
         with: { ruby-version: '4.0', bundler-cache: false }
         continue-on-error: true
       - name: win ext 4.0
-        if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw-ucrt')
+        if: runner.os == 'Windows' && contains(matrix.platforms, 'mingw-ucrt')
         shell: bash
         run: |
           rake compile
