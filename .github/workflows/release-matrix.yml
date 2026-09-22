@@ -59,8 +59,8 @@ jobs:
           # windows: sequential setup-ruby per minor (the msys EEXIST
           # hazard is absorbed by continue-on-error, the leptris-ruby
           # pattern). mingw32 (3.0) and ucrt exts ride one runner.
-          - { os: windows-latest,  platforms: "x64-mingw32 x64-mingw-ucrt" }
-          - { os: windows-11-arm,  platforms: "aarch64-mingw-ucrt" }
+          - { os: windows-latest,  platforms: "x64-mingw32 x64-mingw-ucrt", first_minor: '3.3' }
+          - { os: windows-11-arm,  platforms: "aarch64-mingw-ucrt", first_minor: '3.4' }
           - { os: ubuntu-latest,   platforms: "x86_64-linux" }
           - { os: ubuntu-24.04-arm, platforms: "aarch64-linux" }
           - { os: macos-latest,    platforms: "arm64-darwin" }
@@ -91,10 +91,10 @@ jobs:
       # first minor: full engine (PGO) + ext build via rake
       - uses: ruby/setup-ruby@master
         with:
-          ruby-version: '3.3'
+          ruby-version: ${{ matrix.first_minor || '3.3' }}
           bundler-cache: true
 
-      - name: Build engine + first minor ext (3.3)
+      - name: Build engine + first minor (${{ matrix.first_minor || '3.3' }})
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
             command -v ninja >/dev/null 2>&1 || choco install -y ninja
@@ -116,7 +116,8 @@ jobs:
           test -f "$ENG/src/libteptris.a" || test -f "$ENG/src/teptris.lib" || {
             ls -la "$ENG/src" || true; echo "::error::engine archive not found at $ENG/src"; exit 1; }
           for v in $MINORS; do
-            [ "$v" = "3.3" ] && continue   # built by rake compile above
+            FIRST_MINOR="${{ matrix.first_minor || '3.3' }}"
+            [ "$v" = "$FIRST_MINOR" ] && continue   # built by rake above
             ( cd ext/teptris_ext \
               && rm -f Makefile teptris_ext.so teptris_ext.bundle teptris_ext.dll ./*.o \
               && ruby extconf.rb --with-teptris-libdir="$ROOT/$ENG/src" \
@@ -342,7 +343,7 @@ jobs:
                 bundle exec rake compile
               '
           done
-          find lib/teptris -mindepth 1 -maxdepth 2 -lsteptris_ext.so
+          ls -la lib/teptris/*/teptris_ext.so
 
       - name: Upload extension cells
         if: matrix.minors
