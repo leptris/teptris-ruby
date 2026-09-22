@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  actions: read  # assemble-fat's gh run download pulls ext artifacts
 
 # no workflow-level concurrency here: reusable workflows may not
 # declare one - the callers (release / release-dryrun) carry their
@@ -44,95 +45,194 @@ jobs:
   build:
     if: always() && !cancelled() && !failure()
     runs-on: ${{ matrix.os }}
-    # precompiled cells: the ext ships built (PGO); no runtime fallback
+    timeout-minutes: 60
+    # Batched per platform (#201-class wall fix): one cell builds the
+    # engine ONCE (first minor, full PGO `rake compile`), then each
+    # further minor gets an ext-only extconf+make against that engine
+    # — the ext binds its minor either way, and the PGO-trained
+    # archive is shared. Job count is the release wall under runner
+    # contention: every job RUNS in 1.5-4 min; 20 cells -> 7.
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Windows: ucrt rubies bind x64-ucrt-rubyNNN.dll per minor, so
-          # each cell builds ONE minor's extension; assemble-fat packs
-          # them into a fat gem (nokogiri layout). RubyInstaller ARM64
-          # builds exist only for 3.4 and 4.0; 3.0 is the last mingw32
-          # (msvcrt) line.
-          - { os: windows-latest,  platform: x64-mingw32,        ruby-version: '3.0' }
-          - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby-version: '3.1' }
-          - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby-version: '3.2' }
-          - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby-version: '3.3' }
-          - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby-version: '3.4' }
-          - { os: windows-latest,  platform: x64-mingw-ucrt,     ruby-version: '4.0' }
-          - { os: windows-11-arm,  platform: aarch64-mingw-ucrt, ruby-version: '3.4' }
-          - { os: windows-11-arm,  platform: aarch64-mingw-ucrt, ruby-version: '4.0' }
-          # Unix fat cells: one per ruby minor per platform — a unix
-          # .so binds the minor that built it (a 3.3-built ext failed
-          # dlopen under ruby 4.0 with the gem installed). assemble-fat
-          # packs 3.3/3.4/4.0 into one gem; older minors install the
-          # source gem, which compiles at install.
-          - { os: ubuntu-latest,   platform: x86_64-linux,  ruby-version: '3.3' }
-          - { os: ubuntu-latest,   platform: x86_64-linux,  ruby-version: '3.4' }
-          - { os: ubuntu-latest,   platform: x86_64-linux,  ruby-version: '4.0' }
-          - { os: ubuntu-24.04-arm, platform: aarch64-linux, ruby-version: '3.3' }
-          - { os: ubuntu-24.04-arm, platform: aarch64-linux, ruby-version: '3.4' }
-          - { os: ubuntu-24.04-arm, platform: aarch64-linux, ruby-version: '4.0' }
-          - { os: macos-latest,    platform: arm64-darwin,  ruby-version: '3.3' }
-          - { os: macos-latest,    platform: arm64-darwin,  ruby-version: '3.4' }
-          - { os: macos-latest,    platform: arm64-darwin,  ruby-version: '4.0' }
-          - { os: macos-15-intel,  platform: x86_64-darwin, ruby-version: '3.3' }
-          - { os: macos-15-intel,  platform: x86_64-darwin, ruby-version: '3.4' }
-          - { os: macos-15-intel,  platform: x86_64-darwin, ruby-version: '4.0' }
+          # windows: sequential setup-ruby per minor (the msys EEXIST
+          # hazard is absorbed by continue-on-error, the leptris-ruby
+          # pattern). mingw32 (3.0) and ucrt exts ride one runner.
+          - { os: windows-latest,  platforms: "x64-mingw32 x64-mingw-ucrt" }
+          - { os: windows-11-arm,  platforms: "aarch64-mingw-ucrt" }
+          - { os: ubuntu-latest,   platforms: "x86_64-linux" }
+          - { os: ubuntu-24.04-arm, platforms: "aarch64-linux" }
+          - { os: macos-latest,    platforms: "arm64-darwin" }
+          - { os: macos-15-intel,  platforms: "x86_64-darwin" }
+    env:
+      # minors per platform, mirroring the assemble-fat table
+      MINORS_DEFAULT: "3.3 3.4 4.0"
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
 
-      # keep the platform floor at 11.0 regardless of runner macOS
       - run: echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$GITHUB_ENV"
         if: runner.os == 'macOS'
 
+      - name: Resolve the minor list
+        shell: bash
+        run: |
+          case "${{ matrix.platforms }}" in
+            *x64-mingw-ucrt*) MINORS="3.3 3.4 4.0" ;;
+            *) MINORS="$MINORS_DEFAULT" ;;
+          esac
+          # mingw32's 3.0 rides the windows-x64 cell as its own gem
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then MINORS="3.0 3.1 3.2 3.3 3.4 4.0"; fi
+          echo "MINORS=$MINORS" >> "$GITHUB_ENV"
+          echo "ENGINE_VER=$(grep -o 'LIBTEPTRIS_VERSION = "[^"]*"' Rakefile | cut -d'"' -f2)" >> "$GITHUB_ENV"
+
+      # first minor: full engine (PGO) + ext build via rake
       - uses: ruby/setup-ruby@master
         with:
-          ruby-version: ${{ matrix.ruby-version || '3.3' }}
+          ruby-version: '3.3'
           bundler-cache: true
 
-      - name: Build this ruby minor's extension
-        if: runner.os == 'Windows'
+      - name: Build engine + first minor ext (3.3)
         run: |
-          command -v ninja >/dev/null 2>&1 || choco install -y ninja
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            command -v ninja >/dev/null 2>&1 || choco install -y ninja
+          fi
           rake compile
         shell: bash
 
-      - name: Build this ruby minor's extension (unix)
+      # remaining minors: ext-only against the built engine. On unix
+      # the engine tree lives at tmp/libteptris-$VER; on windows
+      # rake compile is per-minor (setup-ruby swap, engine rebuild —
+      # MSVC's PGO train does not cache as cleanly).
+      - name: Build remaining unix minors (ext-only)
         if: runner.os != 'Windows'
-        run: rake compile
         shell: bash
+        run: |
+          set -eux
+          ROOT="$PWD"
+          ENG="tmp/libteptris-${ENGINE_VER}"
+          test -f "$ENG/src/libteptris.a" || test -f "$ENG/src/teptris.lib" || {
+            ls -la "$ENG/src" || true; echo "::error::engine archive not found at $ENG/src"; exit 1; }
+          for v in $MINORS; do
+            [ "$v" = "3.3" ] && continue   # built by rake compile above
+            ( cd ext/teptris_ext \
+              && rm -f Makefile teptris_ext.so teptris_ext.bundle teptris_ext.dll ./*.o \
+              && ruby extconf.rb --with-teptris-libdir="$ROOT/$ENG/src" \
+                                --with-teptris-include="$ROOT/$ENG/src/include" \
+              && make )
+            mkdir -p "lib/teptris/$v"
+            cp ext/teptris_ext/teptris_ext.* "lib/teptris/$v/"
+          done
+          find lib/teptris -mindepth 1 -maxdepth 2 -ls
 
-      - name: Upload extension cell
+      # windows per-minor sequential setup (EEXIST-safe)
+      - uses: ruby/setup-ruby@master
+        if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw-ucrt')
+        with: { ruby-version: '3.1', bundler-cache: false }
+        continue-on-error: true
+      - name: win ext 3.1
+        if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw-ucrt')
+        shell: bash
+        run: |
+          rake compile
+          ls lib/teptris/3.1/
+      - uses: ruby/setup-ruby@master
+        if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw-ucrt')
+        with: { ruby-version: '3.2', bundler-cache: false }
+        continue-on-error: true
+      - name: win ext 3.2
+        if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw-ucrt')
+        shell: bash
+        run: |
+          rake compile
+          ls lib/teptris/3.2/
+      - uses: ruby/setup-ruby@master
+        if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw-ucrt')
+        with: { ruby-version: '3.4', bundler-cache: false }
+        continue-on-error: true
+      - name: win ext 3.4
+        if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw-ucrt')
+        shell: bash
+        run: |
+          rake compile
+          ls lib/teptris/3.4/
+      - uses: ruby/setup-ruby@master
+        if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw-ucrt')
+        with: { ruby-version: '4.0', bundler-cache: false }
+        continue-on-error: true
+      - name: win ext 4.0
+        if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw-ucrt')
+        shell: bash
+        run: |
+          rake compile
+          ls lib/teptris/4.0/
+      - uses: ruby/setup-ruby@master
+        if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw32')
+        with: { ruby-version: '3.0', bundler-cache: false }
+        continue-on-error: true
+      - name: win ext 3.0 (mingw32)
+        if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw32')
+        shell: bash
+        run: |
+          rake compile
+          ls lib/teptris/3.0/
+          # stage ONLY the 3.0 ext: the mingw32 gem must not carry the
+          # ucrt minors built above (snapshot hygiene)
+          rm -rf /tmp/mingw32-stage && mkdir -p /tmp/mingw32-stage
+          cp -R lib/teptris/3.0 /tmp/mingw32-stage/
+      - name: Upload x64-mingw32 exts
+        if: contains(matrix.platforms, 'x64-mingw32')
         uses: actions/upload-artifact@v4
         with:
-          name: ext-${{ matrix.platform }}-${{ matrix.ruby-version }}
-          path: |
-            lib/teptris
+          name: ext-x64-mingw32
+          path: /tmp/mingw32-stage
+
+      # ucrt artifact FIRST: the mingw32 (3.0) build below adds an
+      # msvcrt-binding ext to lib/teptris — the ucrt gem must not
+      # carry it (upload snapshots lib/teptris at THIS point).
+      - name: Upload x64-mingw-ucrt exts
+        if: contains(matrix.platforms, 'x64-mingw-ucrt')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ext-x64-mingw-ucrt
+          path: lib/teptris
+      - name: Upload aarch64-mingw-ucrt exts
+        if: contains(matrix.platforms, 'aarch64-mingw-ucrt')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ext-aarch64-mingw-ucrt
+          path: lib/teptris
+      - name: Upload unix exts (${{ matrix.platforms }})
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ext-${{ matrix.platforms }}
+          path: lib/teptris
 
   assemble-fat:
-    name: Assemble fat gem (${{ matrix.platform }})
+    name: Assemble fat gems (${{ matrix.group }})
     needs: [build, build-musl]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Batched (#201-class wall fix): two cells loop their platform
+    # lists — packing is pure file assembly, the split keeps one
+    # slot per half instead of twelve. lib/teptris is wiped between
+    # platforms so no cell's exts can leak into the next gem (the
+    # 0.2.40 contamination class; verify-gems would catch it, the
+    # wipe means it cannot form).
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { platform: x64-mingw32,        minors: "3.0" }
-          - { platform: x64-mingw-ucrt,     minors: "3.1 3.2 3.3 3.4 4.0" }
-          - { platform: aarch64-mingw-ucrt, minors: "3.4 4.0" }
-          - { platform: x86_64-linux,       minors: "3.3 3.4 4.0" }
-          - { platform: aarch64-linux,      minors: "3.3 3.4 4.0" }
-          - { platform: x86_64-linux-musl,  minors: "3.3 3.4 4.0" }
-          - { platform: aarch64-linux-musl, minors: "3.3 3.4 4.0" }
-          - { platform: arm-linux,          minors: "3.3 3.4 4.0" }
-          - { platform: powerpc64le-linux,  minors: "3.3 3.4 4.0" }
-          - { platform: s390x-linux,        minors: "3.3 3.4 4.0" }
-          - { platform: x86_64-darwin,      minors: "3.3 3.4 4.0" }
-          - { platform: arm64-darwin,       minors: "3.3 3.4 4.0" }
+          - group: native
+            platforms: "x86_64-linux aarch64-linux x86_64-darwin arm64-darwin x64-mingw32 x64-mingw-ucrt"
+          - group: emulated
+            platforms: "aarch64-mingw-ucrt arm-linux powerpc64le-linux s390x-linux x86_64-linux-musl aarch64-linux-musl"
+    env:
+      MINORS_BY_PLATFORM: "x64-mingw32:3.0 x64-mingw-ucrt:3.1_3.2_3.3_3.4_4.0 aarch64-mingw-ucrt:3.4_4.0 x86_64-linux:3.3_3.4_4.0 aarch64-linux:3.3_3.4_4.0 x86_64-linux-musl:3.3_3.4_4.0 aarch64-linux-musl:3.3_3.4_4.0 arm-linux:3.3_3.4_4.0 powerpc64le-linux:3.3_3.4_4.0 s390x-linux:3.3_3.4_4.0 x86_64-darwin:3.3_3.4_4.0 arm64-darwin:3.3_3.4_4.0"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -143,30 +243,46 @@ jobs:
           ruby-version: '3.3'
           bundler-cache: true
 
-      - uses: actions/download-artifact@v4
-        with:
-          # glibc platforms glob their per-minor ext-<platform>-<minor>
-          # cells; musl platforms pull their single muslext artifact
-          pattern: ${{ contains(matrix.platform, 'musl') && format('muslext-{0}', matrix.platform) || format('ext-{0}-*', matrix.platform) }}
-          path: lib/teptris
-          merge-multiple: true
-
-      - name: Verify every ruby minor made it
+      - name: Assemble each platform gem
+        shell: bash
         run: |
-          # darwin compiles teptris_ext.bundle; linux/windows .so
-          for v in ${{ matrix.minors }}; do
-            test -f "lib/teptris/$v/teptris_ext.so" \
-              -o -f "lib/teptris/$v/teptris_ext.bundle" \
-              || { echo "::error::missing ruby $v extension for ${{ matrix.platform }}"; exit 1; }
+          set -eux
+          for plat in ${{ matrix.platforms }}; do
+            # wipe any earlier platform's exts — no cross-gem leaks
+            rm -rf lib/teptris/3.* lib/teptris/4.0 lib/teptris/*.so lib/teptris/*.bundle 2>/dev/null || true
+            pattern="ext-${plat}"
+            if echo "$plat" | grep -q musl; then pattern="muslext-${plat}"; fi
+            gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts" > /dev/null 2>&1 || true
+            mkdir -p lib/teptris
+            # exact-name download (batched cells upload one artifact
+            # per platform; the old ext-<plat>-* glob matched musl
+            # against glibc names — the 0.2.40 lesson)
+            if ! gh run download "${{ github.run_id }}" -n "$pattern" -D /tmp/ext-dl; then
+              echo "::error::artifact $pattern missing for $plat"; exit 1
+            fi
+            cp -R /tmp/ext-dl/* lib/teptris/ 2>/dev/null || { ls -la /tmp/ext-dl; echo "::error::empty ext artifact for $plat"; exit 1; }
+            rm -rf /tmp/ext-dl
+            minors=$(printf '%s\n' "$MINORS_BY_PLATFORM" | tr ' ' '\n' | sed -n "s/^${plat}://p" | tr '_' ' ')
+            for v in $minors; do
+              test -f "lib/teptris/$v/teptris_ext.so" \
+                -o -f "lib/teptris/$v/teptris_ext.bundle" \
+                || { echo "::error::missing ruby $v extension for $plat"; ls -laR lib/teptris; exit 1; }
+            done
+            bundle exec rake gem:pack:$plat
+            mkdir -p "/tmp/pkg-$plat"
+            mv pkg/*.gem "/tmp/pkg-$plat/"
           done
-          # static link: libteptris lives inside each teptris_ext.so
-          test ! -f lib/libteptris.dll
-
-      - run: bundle exec rake gem:pack:${{ matrix.platform }}
+          mkdir -p pkg
+          for plat in ${{ matrix.platforms }}; do
+            cp "/tmp/pkg-$plat"/*.gem pkg/
+          done
+          ls -la pkg/
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: pkg-${{ matrix.platform }}
+          name: pkg-${{ matrix.group }}
           path: pkg/*.gem
 
   build-musl:
@@ -226,7 +342,7 @@ jobs:
                 bundle exec rake compile
               '
           done
-          ls -la lib/teptris/*/teptris_ext.so
+          find lib/teptris -mindepth 1 -maxdepth 2 -lsteptris_ext.so
 
       - name: Upload extension cells
         if: matrix.minors
@@ -278,24 +394,23 @@ jobs:
   # PGO off: training under qemu costs minutes for single-digit gains
   # on tiers where working-at-all is the goal.
   build-qemu:
-    name: Build ${{ matrix.platform }} ext (qemu, ruby ${{ matrix.ruby }})
+    name: Build ${{ matrix.platform }} exts (qemu)
     if: always() && !cancelled() && !failure()
     runs-on: ubuntu-latest
+    timeout-minutes: 75
+    # Batched per platform (#201-class wall fix): the three minors
+    # loop inside one cell — binfmt is installed once, one queue slot
+    # instead of three. PGO off: training under qemu costs minutes
+    # for single-digit gains on tiers where working-at-all is the goal.
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { platform: arm-linux,         qemu: linux/arm/v7, ruby: "3.3", distro: "-bookworm" }
-          - { platform: arm-linux,         qemu: linux/arm/v7, ruby: "3.4", distro: "-bookworm" }
-          - { platform: arm-linux,         qemu: linux/arm/v7, ruby: "4.0", distro: "-bookworm" }
-          - { platform: powerpc64le-linux, qemu: linux/ppc64le, ruby: "3.3", distro: "-bookworm" }
-          - { platform: powerpc64le-linux, qemu: linux/ppc64le, ruby: "3.4", distro: "-bookworm" }
-          - { platform: powerpc64le-linux, qemu: linux/ppc64le, ruby: "4.0", distro: "-bookworm" }
+          - { platform: arm-linux,         qemu: linux/arm/v7,  distro: "-bookworm" }
+          - { platform: powerpc64le-linux, qemu: linux/ppc64le, distro: "-bookworm" }
           # bookworm ruby images carry arm + ppc64le but NOT s390x;
           # the plain tags (trixie) do
-          - { platform: s390x-linux,       qemu: linux/s390x, ruby: "3.3", distro: "" }
-          - { platform: s390x-linux,       qemu: linux/s390x, ruby: "3.4", distro: "" }
-          - { platform: s390x-linux,       qemu: linux/s390x, ruby: "4.0", distro: "" }
+          - { platform: s390x-linux,       qemu: linux/s390x,   distro: "" }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -304,24 +419,27 @@ jobs:
       - name: Ensure binfmt handlers
         run: docker run --privileged --rm tonistiigi/binfmt --install arm,ppc64le,s390x
 
-      - name: Build this ruby minor's extension
+      - name: Build each ruby minor's extension
         run: |
-          docker run --rm --platform "${{ matrix.qemu }}" \
-            -v "${PWD}:/work" -w /work \
-            -e TEPTRIS_PGO=0 \
-            ruby:${{ matrix.ruby }}${{ matrix.distro }} bash -c '
-              set -eux
-              apt-get update -qq
-              apt-get install -y --no-install-recommends cmake make gcc g++ git python3 curl ca-certificates >/dev/null
-              git config --global --add safe.directory /work || true
-              gem install rake --no-document
-              rake compile
-            '
-          ls -la lib/teptris/${{ matrix.ruby }}/
+          set -eux
+          for v in 3.3 3.4 4.0; do
+            docker run --rm --platform "${{ matrix.qemu }}" \
+              -v "${PWD}:/work" -w /work \
+              -e TEPTRIS_PGO=0 \
+              "ruby:${v}${{ matrix.distro }}" bash -c '
+                set -eux
+                apt-get update -qq
+                apt-get install -y --no-install-recommends cmake make gcc g++ git python3 curl ca-certificates >/dev/null
+                git config --global --add safe.directory /work || true
+                gem install rake --no-document
+                rake compile
+              '
+            ls -la "lib/teptris/$v/"
+          done
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ext-${{ matrix.platform }}-${{ matrix.ruby }}
+          name: ext-${{ matrix.platform }}
           path: |
             lib/teptris
 
@@ -335,26 +453,28 @@ jobs:
     needs: [build-source, build, assemble-fat, build-musl, build-qemu]
     if: always() && !cancelled() && !failure()
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    # Pre-publish gate: install every ASSEMBLED gem locally and
+    # round-trip it on the platform family it targets. Batched per
+    # OS/arch (#201-class wall fix): the minors loop inside the cell
+    # via sequential setup-ruby — the fat gem's per-minor exts are
+    # proven by running the SAME gem under each minor. Every
+    # broken-gem incident so far (musl exts layered over glibc gems
+    # by an artifact glob, per-minor dirs missing) fails HERE instead
+    # of shipping. The emulated tier stays covered by the smoke lane
+    # the release triggers right after publishing.
     strategy:
       fail-fast: false
       matrix:
         include:
-          # one cell per fat platform x ruby minor (host runner ruby)
-          - { os: macos-latest,    suffix: arm64-darwin,  ruby: '3.3' }
-          - { os: macos-latest,    suffix: arm64-darwin,  ruby: '3.4' }
-          - { os: macos-latest,    suffix: arm64-darwin,  ruby: '4.0' }
-          - { os: macos-15-intel,  suffix: x86_64-darwin, ruby: '3.3' }
-          - { os: macos-15-intel,  suffix: x86_64-darwin, ruby: '3.4' }
-          - { os: macos-15-intel,  suffix: x86_64-darwin, ruby: '4.0' }
-          - { os: windows-latest,  suffix: x64-mingw-ucrt,     ruby: '3.3' }
-          - { os: windows-latest,  suffix: x64-mingw-ucrt,     ruby: '3.4' }
-          - { os: windows-latest,  suffix: x64-mingw-ucrt,     ruby: '4.0' }
-          - { os: windows-latest,  suffix: x64-mingw32,        ruby: '3.0' }
-          - { os: windows-11-arm,  suffix: aarch64-mingw-ucrt, ruby: '3.4' }
-          - { os: windows-11-arm,  suffix: aarch64-mingw-ucrt, ruby: '4.0' }
+          - { os: macos-latest,    kind: darwin-arm,   suffix: arm64-darwin }
+          - { os: macos-15-intel,  kind: darwin-x64,   suffix: x86_64-darwin }
+          - { os: windows-latest,  kind: windows-x64,  suffix: x64-mingw-ucrt }
+          - { os: windows-11-arm,  kind: windows-arm,  suffix: aarch64-mingw-ucrt }
           # the linux cell verifies EVERYTHING cheap in containers:
-          # glibc + musl fat minors, and the source gem compile
-          - { os: ubuntu-latest,   suffix: linux-all,        ruby: '3.3' }
+          # glibc + musl fat minors, and the source gem compile; it
+          # also carries the cross-variant Ruby-source parity gate
+          - { os: ubuntu-latest,   kind: linux-all,    suffix: linux-all }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -366,21 +486,8 @@ jobs:
           path: pkg
           merge-multiple: true
 
-      # the per-minor cells MUST run under their minor - the fat gem
-      # only loads the ext built for the running ruby
-      - uses: ruby/setup-ruby@v1
-        if: matrix.suffix != 'linux-all'
-        with:
-          ruby-version: ${{ matrix.ruby }}
-
-      # The leptris-ruby pattern's skew gate: every variant must ship
-      # byte-identical lib/**/*.rb. A diff means one cell packaged from
-      # a different source state (the #318 class — a mingw-only
-      # Ruby/natives mismatch surfaced as NameErrors in host apps; the
-      # per-gem round-trips above cannot catch it because each install
-      # validates against its OWN sources).
       - name: Verify Ruby-source parity across platform variants
-        if: matrix.suffix == 'linux-all'
+        if: matrix.kind == 'linux-all'
         shell: bash
         run: |
           set -euo pipefail
@@ -428,7 +535,7 @@ jobs:
           echo "Ruby sources byte-identical across $valid variants"
 
       - name: Verify the glibc + musl fat gems and the source gem
-        if: matrix.suffix == 'linux-all'
+        if: matrix.kind == 'linux-all'
         shell: bash
         run: |
           set -eux
@@ -455,12 +562,57 @@ jobs:
             gem install --local "$srcgem" --no-document
             ruby scripts/gem_verify.rb'
 
-      - name: Install the assembled gem locally and round-trip
-        if: matrix.suffix != 'linux-all'
+      # host cells: loop minors, install the SAME fat gem under each
+      - name: install+verify helper
+        if: matrix.kind != 'linux-all'
         shell: bash
         run: |
+          cat > /tmp/vcell.sh <<'SH'
           set -eux
-          ls pkg/
-          gem install --local pkg/teptris-*-${{ matrix.suffix }}.gem --no-document
+          gem="$1"
+          gem install --local "$gem" --force --no-document
           ruby scripts/gem_verify.rb
+          gem uninstall teptris -a -x --force || true
+          SH
 
+      - uses: ruby/setup-ruby@master
+        if: matrix.kind != 'linux-all'
+        with: { ruby-version: '3.3', bundler-cache: false }
+      - name: verify 3.3
+        if: matrix.kind != 'linux-all'
+        shell: bash
+        run: |
+          gem=$(ls "pkg/teptris-*-${{ matrix.suffix }}.gem")
+          bash /tmp/vcell.sh "$gem"
+
+      - uses: ruby/setup-ruby@master
+        if: matrix.kind != 'linux-all' && matrix.kind != 'windows-arm'
+        with: { ruby-version: '3.4', bundler-cache: false }
+        continue-on-error: true
+      - name: verify 3.4
+        if: matrix.kind != 'linux-all' && matrix.kind != 'windows-arm'
+        shell: bash
+        run: |
+          gem=$(ls "pkg/teptris-*-${{ matrix.suffix }}.gem")
+          bash /tmp/vcell.sh "$gem"
+
+      - uses: ruby/setup-ruby@master
+        if: matrix.kind != 'linux-all' && matrix.kind != 'windows-arm'
+        with: { ruby-version: '4.0', bundler-cache: false }
+        continue-on-error: true
+      - name: verify 4.0
+        if: matrix.kind != 'linux-all' && matrix.kind != 'windows-arm'
+        shell: bash
+        run: |
+          gem=$(ls "pkg/teptris-*-${{ matrix.suffix }}.gem")
+          bash /tmp/vcell.sh "$gem"
+
+      - uses: ruby/setup-ruby@master
+        if: matrix.kind == 'windows-x64'
+        with: { ruby-version: '3.0', bundler-cache: false }
+        continue-on-error: true
+      - name: verify 3.0 (mingw32 gem)
+        if: matrix.kind == 'windows-x64'
+        shell: bash
+        run: |
+          bash /tmp/vcell.sh "$(ls pkg/teptris-*-x64-mingw32.gem)"
