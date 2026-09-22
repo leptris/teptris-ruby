@@ -479,7 +479,7 @@ jobs:
           - { os: macos-latest,    kind: darwin-arm,   suffix: arm64-darwin }
           - { os: macos-15-intel,  kind: darwin-x64,   suffix: x86_64-darwin }
           - { os: windows-latest,  kind: windows-x64,  suffix: x64-mingw-ucrt }
-          - { os: windows-11-arm,  kind: windows-arm,  suffix: aarch64-mingw-ucrt }
+          - { os: windows-11-arm,  kind: windows-arm,  suffix: aarch64-mingw-ucrt, first_minor: '3.4' }
           # the linux cell verifies EVERYTHING cheap in containers:
           # glibc + musl fat minors, and the source gem compile; it
           # also carries the cross-variant Ruby-source parity gate
@@ -576,7 +576,7 @@ jobs:
         if: matrix.kind != 'linux-all'
         shell: bash
         run: |
-          cat > /tmp/vcell.sh <<'SH'
+          cat > vcell.sh <<'SH'
           set -eux
           gem="$1"
           gem install --local "$gem" --force --no-document
@@ -586,13 +586,15 @@ jobs:
 
       - uses: ruby/setup-ruby@master
         if: matrix.kind != 'linux-all'
-        with: { ruby-version: '3.3', bundler-cache: false }
+        with:
+          ruby-version: ${{ matrix.first_minor || '3.3' }}
+          bundler-cache: false
       - name: verify 3.3
         if: matrix.kind != 'linux-all'
         shell: bash
         run: |
           gem=$(ls pkg/teptris-*-${{ matrix.suffix }}.gem)
-          bash /tmp/vcell.sh "$gem"
+          bash ./vcell.sh "$gem"
 
       - uses: ruby/setup-ruby@master
         if: matrix.kind != 'linux-all' && matrix.kind != 'windows-arm'
@@ -603,7 +605,7 @@ jobs:
         shell: bash
         run: |
           gem=$(ls pkg/teptris-*-${{ matrix.suffix }}.gem)
-          bash /tmp/vcell.sh "$gem"
+          bash ./vcell.sh "$gem"
 
       - uses: ruby/setup-ruby@master
         if: matrix.kind != 'linux-all' && matrix.kind != 'windows-arm'
@@ -614,7 +616,7 @@ jobs:
         shell: bash
         run: |
           gem=$(ls pkg/teptris-*-${{ matrix.suffix }}.gem)
-          bash /tmp/vcell.sh "$gem"
+          bash ./vcell.sh "$gem"
 
       - uses: ruby/setup-ruby@master
         if: matrix.kind == 'windows-x64'
@@ -624,4 +626,4 @@ jobs:
         if: matrix.kind == 'windows-x64'
         shell: bash
         run: |
-          bash /tmp/vcell.sh "$(ls pkg/teptris-*-x64-mingw32.gem)"
+          bash ./vcell.sh "$(ls pkg/teptris-*-x64-mingw32.gem)"
