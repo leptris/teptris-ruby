@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  actions: read  # release-matrix's assemble pulls ext artifacts by run id
 
 concurrency:
   group: release-matrix-${{ github.ref }}
