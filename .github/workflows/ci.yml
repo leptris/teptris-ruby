@@ -127,6 +127,8 @@ jobs:
               git config --global --add safe.directory /work
               bundle install --jobs 4 --retry 3
               bundle exec rake gem:native:arm-linux-musl
+              gem install --local pkg/teptris-*arm-linux-musl.gem --no-document
+              ruby scripts/roundtrip_assertions.rb
             '
       - name: gnu gem (ubuntu armv7)
         run: |
@@ -139,6 +141,22 @@ jobs:
                 build-essential cmake curl ca-certificates ruby-full ruby-dev
               gem install rake --no-document
               TEPTRIS_PGO=0 rake gem:native:arm-linux
+            '
+      # value gate: 0.2.43-0.2.46 shipped an arm-linux ext whose
+      # struct timespec layout mismatched the 64-bit-time_t ruby in
+      # this image (garbage ns on offset-datetime load, stack smash
+      # on dump) — the build above alone cannot see that class
+      - name: gnu gem round-trip (ruby armv7)
+        run: |
+          ls pkg/teptris-*arm-linux.gem
+          docker run --rm --platform linux/arm/v7 \
+            -v "$PWD:/work" -w /work \
+            ruby:3.4 bash -c '
+              set -eux
+              apt-get update -qq
+              apt-get install -y --no-install-recommends ruby-full ruby-dev >/dev/null
+              gem install --local /work/pkg/teptris-*arm-linux.gem --no-document
+              ruby /work/scripts/roundtrip_assertions.rb
             '
 
   # Windows Ruby 3.0 (x64-mingw32, the pre-ucrt msvcrt era): the last

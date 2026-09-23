@@ -21,18 +21,25 @@ static int64_t days_from_civil(int32_t y, uint8_t m, uint8_t d) {
 }
 
 /* exact (no double) Time materialization: nsec stays nsec. Offset
- * datetimes go through timespec+fixed-offset; local datetimes through
- * Time.local with Rational seconds (rb_time_timespec_new's INT_MAX
- * treats the timespec as an absolute instant, not wall-clock local). */
+ * datetimes carry a fixed utc offset via rb_time_num_new; local
+ * datetimes go through Time.local with Rational seconds (both treat
+ * the epoch value as wall-clock for locals / instant+offset for
+ * fixed zones). No struct timespec crosses the Ruby boundary:
+ * armhf glibc rubies build with _TIME_BITS=64 (16-byte timespec)
+ * while an ext compiled without it lays out 8 bytes — the struct
+ * APIs then read (load) or write (dump) past each side's layout. */
 static VALUE time_from_dt(const teptris_datetime *d, bool has_offset) {
     if (has_offset) {
         int64_t days = days_from_civil(d->year, d->month, d->day);
         int64_t secs =
             days * 86400 + d->hour * 3600 + d->minute * 60 + d->second;
-        struct timespec ts;
-        ts.tv_sec = (time_t)(secs - d->offset_seconds);
-        ts.tv_nsec = (long)d->nanosecond;
-        return rb_time_timespec_new(&ts, d->offset_seconds);
+        VALUE num = LL2NUM(secs - d->offset_seconds);
+        if (d->nanosecond != 0) {
+            num = rb_funcall(num, '+', 1,
+                             rb_Rational(LL2NUM((int64_t)d->nanosecond),
+                                         LL2NUM(1000000000)));
+        }
+        return rb_time_num_new(num, INT2FIX(d->offset_seconds));
     }
     VALUE args[6] = {INT2FIX(d->year), INT2FIX(d->month), INT2FIX(d->day),
                      INT2FIX(d->hour), INT2FIX(d->minute),
@@ -180,7 +187,7 @@ static VALUE ext_version(VALUE self) {
 
 /* ------------------------------------------------------------------ dump */
 
-static ID id_utc_offset, id_to_s;
+static ID id_utc_offset, id_to_s, id_to_i, id_nsec;
 
 static void dump_check(teptris_status st) {
     if (st == TEPTRIS_OK) return;
@@ -206,12 +213,12 @@ static void civil_from_days(int64_t z, int32_t *y, uint8_t *m, uint8_t *d) {
     *d = (uint8_t)dd;
 }
 
-/* two crossings per Time: timespec + utc_offset; the civil fields come
- * from integer math (epoch + offset -> y/m/d h:m:s + tv_nsec) */
+/* the instant and its subsecond part come back as Integers (to_i
+ * floors, nsec stays in [0, 1e9) — same split the timespec gave);
+ * the civil fields are integer math on epoch + offset */
 static void fill_dt_from_time(VALUE v, teptris_datetime *dt) {
-    struct timespec ts = rb_time_timespec(v);
     dt->offset_seconds = NUM2INT(rb_funcall(v, id_utc_offset, 0));
-    int64_t secs = (int64_t)ts.tv_sec + dt->offset_seconds;
+    int64_t secs = NUM2LL(rb_funcall(v, id_to_i, 0)) + dt->offset_seconds;
     int64_t days = secs / 86400;
     int32_t rem = (int32_t)(secs % 86400);
     if (rem < 0) { /* floor division: keep rem in [0, 86400) */
@@ -222,7 +229,7 @@ static void fill_dt_from_time(VALUE v, teptris_datetime *dt) {
     dt->hour = (uint8_t)(rem / 3600);
     dt->minute = (uint8_t)((rem / 60) % 60);
     dt->second = (uint8_t)(rem % 60);
-    dt->nanosecond = (uint32_t)ts.tv_nsec;
+    dt->nanosecond = (uint32_t)NUM2LL(rb_funcall(v, id_nsec, 0));
 }
 
 static void dump_scalar(teptris_builder *b, const char *key, size_t klen,
@@ -967,4 +974,6 @@ void Init_teptris_ext(void) {
     cDate = rb_const_get(rb_cObject, rb_intern("Date"));
     id_utc_offset = rb_intern("utc_offset");
     id_to_s = rb_intern("to_s");
+    id_to_i = rb_intern("to_i");
+    id_nsec = rb_intern("nsec");
 }
