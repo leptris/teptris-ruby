@@ -1,0 +1,49 @@
+name: debug-arm32
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  arm32:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - run: docker run --privileged --rm tonistiigi/binfmt --install arm
+      - name: Probe the published gem on arm/v7 gnu
+        run: |
+          docker run --rm --platform linux/arm/v7 \
+            -e "V=0.2.46" ruby:3.4 sh -c '
+              set -eux
+              apt-get update -qq && apt-get install -y --no-install-recommends ruby-full ruby-dev >/dev/null
+              gem install teptris -v "$V" --no-document --platform arm-linux
+              ruby -e "
+                require \"teptris\"
+                require \"date\"
+                src = <<~TOML
+                  i = 1
+                  s = \"x\"
+                  d = 1979-05-27
+                  o = 1979-05-27T07:32:00-07:00
+                  [t]
+                  k = 1.5
+                  arr = [1, 2, {n = 3}]
+                TOML
+                doc = Teptris::TOML.load(src)
+                dumped = Teptris::TOML.dump(doc)
+                puts \"== dumped:\"
+                puts dumped
+                redoc = Teptris::TOML.load(dumped)
+                puts \"engine=#{Teptris::TOML.engine_version} ruby=#{RUBY_VERSION} #{RUBY_PLATFORM}\"
+                (doc.keys | redoc.keys).each do |k|
+                  a, b = doc[k], redoc[k]
+                  puts \"#{k}: #{a.inspect} -> #{b.inspect} #{a == b ? :OK : :MISMATCH}\"
+                end
+                (doc[\"t\"].keys | redoc[\"t\"].keys).each do |k|
+                  a, b = doc[\"t\"][k], redoc[\"t\"][k]
+                  puts \"t.#{k}: #{a.inspect} -> #{b.inspect} #{a == b ? :OK : :MISMATCH}\"
+                end
+                [0.1, 1.5, 3.14159, 1e10, 1e-10, 6.626e-34].each do |f|
+                  r = Teptris::TOML.load(Teptris::TOML.dump({\"f\" => f}))[\"f\"]
+                  puts \"float #{f.inspect}: -> #{r.inspect} #{r == f ? :OK : :MISMATCH}\"
+                end
+              "
+            '
