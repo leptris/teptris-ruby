@@ -11,42 +11,55 @@ jobs:
     timeout-minutes: 20
     steps:
       - run: docker run --privileged --rm tonistiigi/binfmt --install arm
-      - name: Probe the published gem on arm/v7 gnu
+      - name: Probe engine fields and bridge ABI on arm/v7 gnu
         run: |
           docker run --rm --platform linux/arm/v7 \
             -e "V=0.2.46" ruby:3.4 sh -c '
               set -eux
-              apt-get update -qq && apt-get install -y --no-install-recommends ruby-full ruby-dev >/dev/null
+              apt-get update -qq && apt-get install -y --no-install-recommends ruby-full ruby-dev gcc libc6-dev >/dev/null
               gem install teptris -v "$V" --no-document --platform arm-linux
+              GEMDIR=$(gem contents teptris --no-prefix | head -1 | xargs dirname | xargs dirname)
+              ENG="$GEMDIR/ext/teptris_ext/engine/src"
+              ls "$ENG/include/teptris/teptris.h"
+              cat > /tmp/probe.c <<CEOF
+          #include <stdio.h>
+          #include <string.h>
+          #include <time.h>
+          #include "teptris/teptris.h"
+          int main(void) {
+              printf("sizeof(time_t)=%zu sizeof(struct timespec)=%zu\n",
+                     sizeof(time_t), sizeof(struct timespec));
+              const char *src = "o = 1979-05-27T07:32:00-07:00\n";
+              teptris_document *doc = NULL;
+              if (teptris_parse(src, strlen(src), NULL, &doc) != TEPTRIS_OK) {
+                  printf("parse fail\n"); return 1;
+              }
+              const teptris_node *root = teptris_document_root(doc);
+              size_t len = teptris_node_table_length(root);
+              for (size_t i = 0; i < len; i++) {
+                  teptris_view key;
+                  const teptris_node *v = teptris_node_table_at(root, i, &key);
+                  teptris_datetime dt;
+                  if (teptris_node_datetime(v, &dt) == TEPTRIS_OK) {
+                      printf("%.*s: y=%d mo=%u d=%u h=%u mi=%u s=%u ns=%u off=%d kind=%d\n",
+                             (int)key.len, key.ptr, dt.year, dt.month, dt.day,
+                             dt.hour, dt.minute, dt.second, dt.nanosecond,
+                             dt.offset_seconds, (int)teptris_node_kind(v));
+                  }
+              }
+              teptris_document_free(doc);
+              return 0;
+          }
+          CEOF
+              gcc -O2 -I"$ENG/include" $(find "$ENG" -name "*.c" ! -name "*fuzz*") /tmp/probe.c -o /tmp/probe
+              /tmp/probe
               ruby -e "
                 require \"teptris\"
-                require \"date\"
-                src = <<~TOML
-                  i = 1
-                  s = \"x\"
-                  d = 1979-05-27
-                  o = 1979-05-27T07:32:00-07:00
-                  [t]
-                  k = 1.5
-                  arr = [1, 2, {n = 3}]
-                TOML
-                doc = Teptris::TOML.load(src)
-                dumped = Teptris::TOML.dump(doc)
-                puts \"== dumped:\"
-                puts dumped
-                redoc = Teptris::TOML.load(dumped)
-                puts \"engine=#{Teptris::TOML.engine_version} ruby=#{RUBY_VERSION} #{RUBY_PLATFORM}\"
-                (doc.keys | redoc.keys).each do |k|
-                  a, b = doc[k], redoc[k]
-                  puts \"#{k}: #{a.inspect} -> #{b.inspect} #{a == b ? :OK : :MISMATCH}\"
-                end
-                (doc[\"t\"].keys | redoc[\"t\"].keys).each do |k|
-                  a, b = doc[\"t\"][k], redoc[\"t\"][k]
-                  puts \"t.#{k}: #{a.inspect} -> #{b.inspect} #{a == b ? :OK : :MISMATCH}\"
-                end
-                [0.1, 1.5, 3.14159, 1e10, 1e-10, 6.626e-34].each do |f|
-                  r = Teptris::TOML.load(Teptris::TOML.dump({\"f\" => f}))[\"f\"]
-                  puts \"float #{f.inspect}: -> #{r.inspect} #{r == f ? :OK : :MISMATCH}\"
+                puts \"ruby sanity: #{Time.utc(1979,5,27,7,32,0).nsec}\"
+                [\"1979-05-27T07:32:00-07:00\", \"1979-05-27T07:32:00Z\", \"1979-05-27T07:32:00\", \"07:32:00\", \"1979-05-27T07:32:00.5Z\"].each do |lit|
+                  v = Teptris::TOML.load(\"x = #{lit}\")[\"x\"]
+                  n = v.respond_to?(:nsec) ? v.nsec : \"-\"
+                  puts \"#{lit} -> #{v.class} nsec=#{n} #{v.inspect}\"
                 end
               "
             '
