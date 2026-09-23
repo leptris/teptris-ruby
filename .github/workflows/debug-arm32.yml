@@ -18,9 +18,9 @@ jobs:
               set -eux
               apt-get update -qq && apt-get install -y --no-install-recommends ruby-full ruby-dev gcc libc6-dev >/dev/null
               gem install teptris -v "$V" --no-document --platform arm-linux
-              GEMDIR=$(gem contents teptris --no-prefix | head -1 | xargs dirname | xargs dirname)
-              ENG="$GEMDIR/ext/teptris_ext/engine/src"
-              ls "$ENG/include/teptris/teptris.h"
+              HDR=$(gem contents teptris | grep "engine/src/include/teptris/teptris.h" | head -1)
+              ENG=$(echo "$HDR" | xargs dirname | xargs dirname | xargs dirname)
+                            ls "$ENG/include/teptris/teptris.h"
               cat > /tmp/probe.c <<CEOF
           #include <stdio.h>
           #include <string.h>
