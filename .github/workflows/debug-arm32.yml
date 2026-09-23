@@ -51,7 +51,7 @@ jobs:
               return 0;
           }
           CEOF
-              gcc -O2 -I"$ENG/include" $(find "$ENG" -name "*.c" ! -name "*fuzz*") /tmp/probe.c -o /tmp/probe
+              gcc -O2 -I"$ENG/include" -I"$ENG" $(find "$ENG" -name "*.c" ! -name "*fuzz*") /tmp/probe.c -o /tmp/probe
               /tmp/probe
               ruby -e "
                 require \"teptris\"
