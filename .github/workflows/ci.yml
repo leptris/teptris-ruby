@@ -130,33 +130,24 @@ jobs:
               gem install --local pkg/teptris-*arm-linux-musl.gem --no-document
               ruby scripts/roundtrip_assertions.rb
             '
-      - name: gnu gem (ubuntu armv7)
+      # build + value round-trip in the same ruby:3.4 arm/v7 container
+      # (the release train's build env). The earlier two-step form
+      # built under ubuntu:24.04's apt ruby 3.2 then asserted under
+      # ruby 3.4.10 — the locally-built gem carries only a 3.2 ext
+      # and won't load. Building here matches what gets shipped.
+      - name: gnu gem build + round-trip (ruby armv7)
         run: |
-          docker run --rm --platform linux/arm/v7 \
-            -v "$PWD:/work" -w /work \
-            ubuntu:24.04 bash -c '
-              set -eux
-              apt-get update -qq
-              apt-get install -y --no-install-recommends \
-                build-essential cmake curl ca-certificates ruby-full ruby-dev
-              gem install rake --no-document
-              TEPTRIS_PGO=0 rake gem:native:arm-linux
-            '
-      # value gate: 0.2.43-0.2.46 shipped an arm-linux ext whose
-      # struct timespec layout mismatched the 64-bit-time_t ruby in
-      # this image (garbage ns on offset-datetime load, stack smash
-      # on dump) — the build above alone cannot see that class
-      - name: gnu gem round-trip (ruby armv7)
-        run: |
-          ls pkg/teptris-*arm-linux.gem
           docker run --rm --platform linux/arm/v7 \
             -v "$PWD:/work" -w /work \
             ruby:3.4 bash -c '
               set -eux
               apt-get update -qq
-              apt-get install -y --no-install-recommends ruby-full ruby-dev >/dev/null
-              gem install --local /work/pkg/teptris-*arm-linux.gem --no-document
-              ruby /work/scripts/roundtrip_assertions.rb
+              apt-get install -y --no-install-recommends \
+                build-essential cmake curl ca-certificates ruby-full ruby-dev >/dev/null
+              gem install rake --no-document
+              TEPTRIS_PGO=0 rake gem:native:arm-linux
+              gem install --local pkg/teptris-*arm-linux.gem --no-document
+              ruby scripts/roundtrip_assertions.rb
             '
 
   # Windows Ruby 3.0 (x64-mingw32, the pre-ucrt msvcrt era): the last
