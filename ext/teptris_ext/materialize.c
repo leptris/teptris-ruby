@@ -89,7 +89,87 @@ static VALUE dt_string(const teptris_datetime *d, int kind) {
     return rb_enc_str_new(buf, l, rb_utf8_encoding());
 }
 
-static VALUE obj_from_node(const teptris_node *n, unsigned flags) {
+/* ---- per-load table-key cache ------------------------------------------------
+ * TOML keys repeat within a document and across a batch; a fresh String
+ * per occurrence costs an allocation and a full Hash re-hash each time.
+ * This cache maps key CONTENT to one frozen String, shared everywhere:
+ * repeated keys become a single GC-pinned object with its hash already
+ * computed. It is document-local (dies with the load call), capped at
+ * KC_CAP entries so unique-key corpora pay only a cheap failed probe
+ * after the cap, and never touches the VM's global fstring table (the
+ * intern-always attempt regressed there — teptris-ruby#122: unique
+ * keys make the intern table pure overhead). Strings are frozen so the
+ * sharing cannot alias a mutation. NULL cache = fresh strings (the
+ * low-volume schema-RAW path). */
+
+#define KC_CAP 4096
+#define KC_SLOTS (KC_CAP * 2) /* stays <=50% full: probes stay ~2 */
+
+typedef struct {
+    VALUE str; /* Qfalse = empty slot */
+} kc_slot;
+
+typedef struct {
+    VALUE keep; /* Ruby Array pinning every cached String */
+    kc_slot *slots;
+    size_t used;
+} keycache;
+
+static uint64_t kc_hash(const char *p, size_t len)
+{
+    uint64_t h = 1469598103934665603ULL;
+    for (size_t i = 0; i < len; i++) {
+        h ^= (unsigned char)p[i];
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+static void kc_init(keycache *kc)
+{
+    kc->keep = rb_ary_new_capa(64);
+    kc->slots = calloc(KC_SLOTS, sizeof(kc_slot)); /* zero = Qfalse empty */
+    if (kc->slots == NULL) {
+        /* no cache is a correctness-preserving fallback */
+        kc->keep = Qnil;
+        return;
+    }
+    kc->used = 0;
+}
+
+static void kc_free(keycache *kc)
+{
+    free(kc->slots);
+    kc->slots = NULL;
+}
+
+static VALUE kc_key(keycache *kc, const char *p, size_t len)
+{
+    if (kc == NULL || kc->slots == NULL) {
+        return rb_enc_str_new(p, (long)len, rb_utf8_encoding());
+    }
+    size_t mask = KC_SLOTS - 1;
+    size_t slot = (size_t)kc_hash(p, len) & mask;
+    while (kc->slots[slot].str != Qfalse) {
+        VALUE s = kc->slots[slot].str;
+        if ((size_t)RSTRING_LEN(s) == len &&
+            memcmp(RSTRING_PTR(s), p, len) == 0) {
+            return s; /* hit: one shared object, hash already cached */
+        }
+        slot = (slot + 1) & mask;
+    }
+    VALUE fresh = rb_enc_str_new(p, (long)len, rb_utf8_encoding());
+    rb_obj_freeze(fresh);
+    rb_ary_push(kc->keep, fresh); /* GC pin before it enters the slots */
+    if (kc->used < KC_CAP) {
+        kc->slots[slot].str = fresh;
+        kc->used++;
+    }
+    return fresh;
+}
+
+static VALUE obj_from_node(const teptris_node *n, unsigned flags,
+                           keycache *kc) {
     switch (teptris_node_kind(n)) {
     case TEPTRIS_TABLE: {
         size_t len = teptris_node_table_length(n);
@@ -97,9 +177,8 @@ static VALUE obj_from_node(const teptris_node *n, unsigned flags) {
         for (size_t i = 0; i < len; i++) {
             teptris_view key;
             const teptris_node *v = teptris_node_table_at(n, i, &key);
-            rb_hash_aset(h,
-                rb_enc_str_new(key.ptr, (long)key.len, rb_utf8_encoding()),
-                obj_from_node(v, flags));
+            rb_hash_aset(h, kc_key(kc, key.ptr, (size_t)key.len),
+                         obj_from_node(v, flags, kc));
         }
         return h;
     }
@@ -107,7 +186,7 @@ static VALUE obj_from_node(const teptris_node *n, unsigned flags) {
         size_t len = teptris_node_array_length(n);
         VALUE a = rb_ary_new_capa((long)len);
         for (size_t i = 0; i < len; i++)
-            rb_ary_push(a, obj_from_node(teptris_node_array_at(n, i), flags));
+            rb_ary_push(a, obj_from_node(teptris_node_array_at(n, i), flags, kc));
         return a;
     }
     case TEPTRIS_STRING: {
@@ -176,7 +255,10 @@ static VALUE ext_load(int argc, VALUE *argv, VALUE self) {
         if (RTEST(fd)) flags |= FMT_FORBID_DATE;
     }
     teptris_document *doc = parse_or_raise(str);
-    VALUE out = obj_from_node(teptris_document_root(doc), flags);
+    keycache kc;
+    kc_init(&kc);
+    VALUE out = obj_from_node(teptris_document_root(doc), flags, &kc);
+    kc_free(&kc);
     teptris_document_free(doc);
     return out;
 }
@@ -526,7 +608,7 @@ static VALUE asm_rows(const teptris_plan *p, const teptris_plan_result *res,
         case TEPTRIS_PLAN_RAW_RESULT: {
             const teptris_node *raw = teptris_plan_result_raw_at(res, i);
             if (raw != NULL) {
-                val = obj_from_node(raw, 0);
+                val = obj_from_node(raw, 0, NULL);
             }
             break;
         }
@@ -780,7 +862,11 @@ static VALUE lazy_dig(int argc, VALUE *argv, VALUE self) {
 /* full materialization: the eager path, owned */
 static VALUE lazy_to(VALUE self) {
     lazy_value *v = lazy_self(self);
-    return obj_from_node(v->node, 0);
+    keycache kc;
+    kc_init(&kc);
+    VALUE out = obj_from_node(v->node, 0, &kc);
+    kc_free(&kc);
+    return out;
 }
 
 /* ---------------------------------------------------------------- batch --
@@ -936,11 +1022,14 @@ static VALUE ext_load_batch(int argc, VALUE *argv, VALUE self) {
         rb_exc_raise(ex);
     }
     VALUE out = rb_ary_new_capa(n);
+    keycache kc;
+    kc_init(&kc); /* one cache across the batch: keys repeat across docs */
     for (long i = 0; i < n; i++) {
         const teptris_node *root = teptris_document_root(s->docs[i]);
-        rb_ary_store(out, i, obj_from_node(root, flags));
+        rb_ary_store(out, i, obj_from_node(root, flags, &kc));
         teptris_document_free(s->docs[i]);
     }
+    kc_free(&kc);
     batch_scratch_free(s);
     return out;
 }
