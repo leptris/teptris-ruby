@@ -178,7 +178,12 @@ static VALUE obj_from_node(const teptris_node *n, unsigned flags,
     switch (teptris_node_kind(n)) {
     case TEPTRIS_TABLE: {
         size_t len = teptris_node_table_length(n);
+#if RUBY_API_VERSION_MAJOR > 3 || \
+    (RUBY_API_VERSION_MAJOR == 3 && RUBY_API_VERSION_MINOR >= 2)
+        VALUE h = rb_hash_new_capa((long)len);
+#else
         VALUE h = rb_hash_new();
+#endif
         for (size_t i = 0; i < len; i++) {
             teptris_view key;
             const teptris_node *v = teptris_node_table_at(n, i, &key);
