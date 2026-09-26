@@ -89,17 +89,33 @@ static VALUE dt_string(const teptris_datetime *d, int kind) {
     return rb_enc_str_new(buf, l, rb_utf8_encoding());
 }
 
+/* Table keys repeat across a corpus — the same "name"/"id"/"items"
+ * inside thousands of tables — so they go into the VM's fstring table:
+ * one object each, with the hash code cached on the string for the
+ * following Hash inserts. Value strings stay fresh (they are data,
+ * usually unique; interning them would bloat the fstring table). */
+static VALUE key_string(teptris_view key) {
+#if RUBY_API_VERSION_MAJOR >= 3
+    return rb_enc_interned_str(key.ptr, (long)key.len, rb_utf8_encoding());
+#else
+    return rb_enc_str_new(key.ptr, (long)key.len, rb_utf8_encoding());
+#endif
+}
+
 static VALUE obj_from_node(const teptris_node *n, unsigned flags) {
     switch (teptris_node_kind(n)) {
     case TEPTRIS_TABLE: {
         size_t len = teptris_node_table_length(n);
+#if RUBY_API_VERSION_MAJOR > 3 || \
+    (RUBY_API_VERSION_MAJOR == 3 && RUBY_API_VERSION_MINOR >= 2)
+        VALUE h = rb_hash_new_capa((long)len);
+#else
         VALUE h = rb_hash_new();
+#endif
         for (size_t i = 0; i < len; i++) {
             teptris_view key;
             const teptris_node *v = teptris_node_table_at(n, i, &key);
-            rb_hash_aset(h,
-                rb_enc_str_new(key.ptr, (long)key.len, rb_utf8_encoding()),
-                obj_from_node(v, flags));
+            rb_hash_aset(h, key_string(key), obj_from_node(v, flags));
         }
         return h;
     }
