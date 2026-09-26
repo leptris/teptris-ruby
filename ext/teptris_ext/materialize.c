@@ -41,11 +41,16 @@ static VALUE time_from_dt(const teptris_datetime *d, bool has_offset) {
         }
         return rb_time_num_new(num, INT2FIX(d->offset_seconds));
     }
+    /* whole seconds skip the Rational: Time.local normalizes
+     * Rational(s * 1e9, 1e9) to exactly s, so an Integer is the same
+     * result without the allocation or the rational path */
+    VALUE sec = (d->nanosecond != 0)
+                    ? rb_Rational(LL2NUM((int64_t)d->second * 1000000000 +
+                                         d->nanosecond),
+                                  LL2NUM(1000000000))
+                    : INT2FIX(d->second);
     VALUE args[6] = {INT2FIX(d->year), INT2FIX(d->month), INT2FIX(d->day),
-                     INT2FIX(d->hour), INT2FIX(d->minute),
-                     rb_Rational(LL2NUM((int64_t)d->second * 1000000000 +
-                                        d->nanosecond),
-                                 LL2NUM(1000000000))};
+                     INT2FIX(d->hour), INT2FIX(d->minute), sec};
     return rb_funcallv(rb_cTime, rb_intern("local"), 6, args);
 }
 
