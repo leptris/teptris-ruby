@@ -332,6 +332,10 @@ jobs:
       # (fat layout; assemble-fat packs). Emulated armv7 keeps the
       # single-minor gem — tripling qemu builds for one tier is not
       # worth the release wall time.
+        # native x86_64/aarch64: PGO two-stage trains here (python3
+        # feeds the corpus; gcc .gcda flavor). The emulated cells keep
+        # TEPTRIS_PGO=0 — training under qemu costs minutes.
+
       - name: Build each ruby minor's extension (Alpine, native)
         if: matrix.minors
         env:
@@ -342,7 +346,6 @@ jobs:
             docker run --rm \
               -v "${PWD}:/work" \
               -w /work \
-              -e TEPTRIS_PGO=0 \
               "ruby:${v}-alpine" sh -c '
                 set -eux
                 apk add --no-cache build-base bash curl ca-certificates git cmake make gcc g++ python3
