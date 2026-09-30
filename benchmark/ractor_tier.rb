@@ -55,7 +55,7 @@ def bench(label, docs, workers)
       done = 0
       alive = pool.dup
       while done < docs.size && !alive.empty?
-        ready = begin
+        ready, = begin
           Ractor.select(*alive)
         rescue Ractor::ClosedError
           break
