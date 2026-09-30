@@ -5,6 +5,7 @@
 # Run: ruby benchmark/ractor_tier.rb [corpus-dir] [docs-per-shape] [workers]
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "teptris"
+require "etc"
 
 corpus = ARGV[0] || File.expand_path("../../teptris/bench-corpus", __dir__)
 per_shape = (ARGV[1] || 40).to_i
