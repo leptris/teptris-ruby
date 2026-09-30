@@ -1,0 +1,27 @@
+name: ractor-bench
+
+# Measures Ractor-parallel batch loading on a quiet runner: sequential
+# vs C load_batch vs the Ractor worker pool. workflow_dispatch only.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout libteptris (bench corpus)
+        uses: actions/checkout@v4
+        with:
+          repository: leptris/teptris
+          path: libteptris-src
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+      - run: command -v ninja >/dev/null 2>&1 || sudo apt-get install -y ninja-build
+      - run: rake compile
+      - name: Ractor tier
+        run: ruby benchmark/ractor_tier.rb libteptris-src/bench-corpus 40
