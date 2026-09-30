@@ -40,11 +40,10 @@ def bench(label, docs, workers)
             Ractor.yield [msg[0], e], move: false
             next
           end
-          begin
-            Ractor.yield [msg[0], h], move: true
-          rescue Ractor::Error
-            Ractor.yield [msg[0], h], move: false
-          end
+          # move: true transfer segfaulted 3.4.11's GC marking
+          # (gc_mark_set from newobj_cache_miss under yield(move));
+          # the copy path is the stable one
+          Ractor.yield [msg[0], h]
         end
       end
     end
