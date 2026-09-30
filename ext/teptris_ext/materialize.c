@@ -1045,6 +1045,9 @@ static VALUE ext_load_batch(int argc, VALUE *argv, VALUE self) {
 }
 
 void Init_teptris_ext(void) {
+    /* every module static is written once here and read-only after;
+     * call state (key cache, arenas, types) is per-object or per-call */
+    rb_ext_ractor_safe(true);
     VALUE m = rb_define_module("TeptrisExt");
     rb_define_module_function(m, "load", ext_load, -1);
     rb_define_module_function(m, "load_lazy", ext_load_lazy, 1);
