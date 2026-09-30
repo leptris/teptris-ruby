@@ -6,6 +6,7 @@
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "teptris"
 require "etc"
+require "timeout"
 
 corpus = ARGV[0] || File.expand_path("../../teptris/bench-corpus", __dir__)
 per_shape = (ARGV[1] || 40).to_i
@@ -29,35 +30,48 @@ def bench(label, docs, workers)
   when "load_batch"
     Teptris::TOML.load_batch(docs.map(&:last))
   when "ractors"
-    pool = Array.new(workers) do
-      Ractor.new do
-        loop do
-          msg = Ractor.receive
-          src = msg[1]
-          begin
-            h = Teptris::TOML.load(src)
-          rescue => e
-            Ractor.yield [msg[0], e], move: false
-            next
+    # dead workers must not wedge the collector: tagged yields,
+    # sentinel shutdown, ClosedError tolerance, and a hard timeout
+    # that reports HUNG as a verdict instead of hanging the lane
+    Timeout.timeout(120) do
+      pool = Array.new(workers) do
+        Ractor.new do
+          loop do
+            msg = Ractor.receive
+            break if msg == :done
+            i, src = msg
+            begin
+              Ractor.yield [i, Teptris::TOML.load(src)]
+            rescue => e
+              Ractor.yield [i, e]
+            end
           end
-          # move: true transfer segfaulted 3.4.11's GC marking
-          # (gc_mark_set from newobj_cache_miss under yield(move));
-          # the copy path is the stable one
-          Ractor.yield [msg[0], h]
         end
       end
+      out = Array.new(docs.size)
+      docs.each_with_index do |(_, src), i|
+        pool[i % workers].send([i, src])
+      end
+      done = 0
+      alive = pool.dup
+      while done < docs.size && !alive.empty?
+        ready = begin
+          Ractor.select(*alive)
+        rescue Ractor::ClosedError
+          break
+        end
+        begin
+          i, v = ready.take
+          out[i] = v
+          done += 1
+        rescue Ractor::ClosedError
+          alive.delete(ready)
+        end
+      end
+      pool.each { |r| (r.send(:done) rescue nil) }
+      raise "HUNG collected #{done}/#{docs.size}" unless done == docs.size
+      out
     end
-    out = Array.new(docs.size)
-    docs.each_with_index { |(_, src), i| pool[i % workers].send([i, src]) }
-    done = 0
-    while done < docs.size
-      ready, = Ractor.select(*pool)
-      i, v = ready.take
-      out[i] = v
-      done += 1
-    end
-    pool.each { |r| r.send(nil) }
-    out
   end
   Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
 end
@@ -66,11 +80,17 @@ puts format("ruby %s  ractors=%d  docs=%d  cores=%d",
             RUBY_VERSION, workers, docs.size,
             Etc.respond_to?(:nprocessors) ? Etc.nprocessors : "?")
 %w[sequential load_batch ractors].each do |label|
-  best = Float::INFINITY
-  3.times do
-    GC.start
-    dt = bench(label, docs, workers)
-    best = dt if dt < best
+  begin
+    best = Float::INFINITY
+    3.times do
+      GC.start
+      dt = bench(label, docs, workers)
+      best = dt if dt < best
+    end
+    puts format("%-12s %8.1f ms", label, best * 1000)
+  rescue Timeout::Error
+    puts format("%-12s %8s", label, "HUNG")
+  rescue RuntimeError => e
+    puts format("%-12s %8s", label, e.message[0, 40])
   end
-  puts format("%-12s %8.1f ms", label, best * 1000)
 end
