@@ -64,6 +64,15 @@ module Teptris
         n = tomls.size
         threads = [threads, n].min
         return TeptrisExt.load_batch(tomls, opts) if threads <= 1
+        # the C parse pins its input string (rb_str_locktmp - one lock
+        # per string); a repeated object in two slices would double-
+        # lock, so repeated inputs get a dup
+        seen = {}
+        tomls = tomls.map do |s|
+          next s.dup if seen[s.object_id]
+          seen[s.object_id] = true
+          s
+        end
         per = (n.to_f / threads).ceil
         results = Array.new(n)
         first_error = nil
