@@ -237,9 +237,32 @@ static VALUE obj_from_node(const teptris_node *n, unsigned flags,
     }}
 }
 
+/* the parse is pure C over the buffer with no VM access: run it
+ * GVL-free so other threads progress during long parses (and parallel
+ * batch loads overlap). The string is locked (pinned) across the
+ * release so a concurrent compacting GC cannot relocate the buffer. */
+struct gvl_parse_arg {
+    const char *data;
+    size_t len;
+    teptris_document **doc;
+    teptris_status st;
+};
+
+static void *parse_without_gvl(void *p)
+{
+    struct gvl_parse_arg *a = (struct gvl_parse_arg *)p;
+    a->st = teptris_parse(a->data, a->len, NULL, a->doc);
+    return NULL;
+}
+
 static teptris_document *parse_or_raise(VALUE str) {
     teptris_document *doc = NULL;
-    teptris_status st = teptris_parse(RSTRING_PTR(str), (size_t)RSTRING_LEN(str), NULL, &doc);
+    rb_str_locktmp(str);
+    struct gvl_parse_arg arg = {RSTRING_PTR(str), (size_t)RSTRING_LEN(str),
+                                &doc, TEPTRIS_OK};
+    rb_thread_call_without_gvl(parse_without_gvl, &arg, RUBY_UBF_IO, NULL);
+    rb_str_unlocktmp(str);
+    teptris_status st = arg.st;
     if (st != TEPTRIS_OK) {
         const teptris_error *e = teptris_document_error(doc);
         VALUE ex = rb_exc_new(eParseError, e->message, (long)strlen(e->message));

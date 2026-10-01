@@ -51,9 +51,42 @@ module Teptris
       # struct across the batch, return one eager Hash per document.
       # Same datetime contract as load. A failing document raises
       # Teptris::ParseError carrying the first failure's line/column.
-      def load_batch(tomls, safe_load: nil, datetime_policy: :native)
+      def load_batch(tomls, safe_load: nil, datetime_policy: :native,
+                    threads: 1)
         _validate_batch!(tomls, safe_load, datetime_policy)
-        TeptrisExt.load_batch(tomls, _safe_load_opts(safe_load, datetime_policy))
+        opts = _safe_load_opts(safe_load, datetime_policy)
+        return TeptrisExt.load_batch(tomls, opts) if threads <= 1
+
+        # threads > 1: slice across Ruby threads. The C parse releases
+        # the GVL, so parses overlap; materialization serializes on the
+        # GVL. Contiguous slices keep error order deterministic: the
+        # lowest-index failure raises after all threads join.
+        n = tomls.size
+        threads = [threads, n].min
+        return TeptrisExt.load_batch(tomls, opts) if threads <= 1
+        per = (n.to_f / threads).ceil
+        results = Array.new(n)
+        first_error = nil
+        mutex = Mutex.new
+        threads.times.map do |ti|
+          Thread.new(ti) do |i|
+            base = i * per
+            slice = tomls[base, per] || []
+            begin
+              loaded = slice.map { |s| TeptrisExt.load(s, opts) }
+              slice.each_with_index { |_, j| results[base + j] = loaded[j] }
+            rescue StandardError => e
+              mutex.synchronize do
+                first_error ||= [base, e]
+              end
+            end
+          end
+        end.each(&:join)
+        if first_error
+          _, err = first_error
+          raise err
+        end
+        results
       end
 
       # Lazy twin of load_batch: parse N inputs eagerly, hand back an
