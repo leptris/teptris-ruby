@@ -258,11 +258,15 @@ static void *parse_without_gvl(void *p)
 
 static teptris_document *parse_or_raise(VALUE str) {
     teptris_document *doc = NULL;
-    rb_str_locktmp(str);
-    struct gvl_parse_arg arg = {RSTRING_PTR(str), (size_t)RSTRING_LEN(str),
+    /* frozen strings cannot take the tmp lock (ruby 4.0 raises
+     * FrozenError - chilled literals); a dup is movable-page-safe the
+     * same way, at one input copy for frozen callers only */
+    volatile VALUE pin = OBJ_FROZEN(str) ? rb_str_dup(str) : str;
+    rb_str_locktmp(pin);
+    struct gvl_parse_arg arg = {RSTRING_PTR(pin), (size_t)RSTRING_LEN(pin),
                                 &doc, TEPTRIS_OK};
     rb_thread_call_without_gvl(parse_without_gvl, &arg, RUBY_UBF_IO, NULL);
-    rb_str_unlocktmp(str);
+    rb_str_unlocktmp(pin);
     teptris_status st = arg.st;
     if (st != TEPTRIS_OK) {
         const teptris_error *e = teptris_document_error(doc);

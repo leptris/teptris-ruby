@@ -1,6 +1,6 @@
 require "spec_helper"
 
-RSpec.describe "Ractor", if: defined?(Ractor) do
+RSpec.describe "Ractor", if: defined?(Ractor) && Ractor.instance_methods.include?(:take) do
   it "loads TOML inside a non-main Ractor" do
     r = Ractor.new do
       Teptris::TOML.load("a = 1\n[x]\nb = 2\n")
