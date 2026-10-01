@@ -25,6 +25,15 @@ RSpec.describe "load_batch threads:" do
       .to eq(Teptris::TOML.load_batch(SMALL))
   end
 
+  it "handles the same string object repeated across slices" do
+    one = "k = 1\n[t]\ns = 'v'\n"
+    many = Array.new(60, one)
+    seq = Teptris::TOML.load_batch(many)
+    par = Teptris::TOML.load_batch(many, threads: 4)
+    expect(par).to eq(seq)
+    expect(par.uniq.size).to eq(1)
+  end
+
   it "raises the first document's error deterministically" do
     bad = ["a = 1\n", "b = 2\n", "c = ?\n", "d = 4\n"]
     expect { Teptris::TOML.load_batch(bad, threads: 3) }
