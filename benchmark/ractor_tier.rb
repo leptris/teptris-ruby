@@ -48,7 +48,7 @@ def bench(label, docs, workers)
         end
       end
     end.each(&:join)
-    raise errs.first if errs
+    raise errs.first unless errs.empty?
     results
   when "ractors"
     # dead workers must not wedge the collector: tagged yields,
