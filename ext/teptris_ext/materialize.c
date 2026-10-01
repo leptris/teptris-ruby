@@ -755,9 +755,14 @@ static void lazy_owner_free(void *p) {
     xfree(o);
 }
 static size_t lazy_owner_size(const void *p) { return sizeof(lazy_owner); }
+static void lazy_owner_mark(void *p)
+{
+    lazy_owner *o = (lazy_owner *)p;
+    if (o->input) rb_gc_mark(o->input); /* roots the viewed buffer */
+}
 static const rb_data_type_t lazy_owner_type = {
     "TeptrisExt/LazyOwner",
-    {NULL, lazy_owner_free, lazy_owner_size, NULL, 0},
+    {lazy_owner_mark, lazy_owner_free, lazy_owner_size, NULL, 0},
     NULL, NULL, RUBY_TYPED_FREE_IMMEDIATELY};
 
 static void lazy_value_mark(void *p) {
@@ -973,25 +978,59 @@ static unsigned flags_from_opts(VALUE opts) {
 /* Parse-only batch (returns an Array of Lazy wrappers, one per doc):
  * eager parse, deferred materialization. Same per-doc error semantics
  * as ext_load_lazy. */
+struct batch_parse_arg {
+    const char **data;
+    size_t *lens;
+    size_t n;
+    teptris_document **docs;
+    teptris_status *statuses;
+    teptris_status batch;
+};
+
+static void *batch_parse_without_gvl(void *p)
+{
+    struct batch_parse_arg *a = (struct batch_parse_arg *)p;
+    a->batch = teptris_parse_batch(a->data, a->lens, a->n, NULL,
+                                   a->docs, a->statuses);
+    return NULL;
+}
+
 static VALUE ext_load_lazy_batch(VALUE self, VALUE strings) {
     Check_Type(strings, T_ARRAY);
     long n = RARRAY_LEN(strings);
     if (n == 0) return rb_ary_new();
     batch_scratch *s = batch_scratch_alloc(n);
     if (s == NULL) rb_raise(eError, "out of memory batching %ld documents", n);
+    /* the batch parse is pure C: pin every input (one tmp lock per
+     * string - repeated objects dup; frozen strings cannot take the
+     * lock, yet compaction can move them) and release the GVL for the
+     * whole parse */
+    VALUE seen = rb_hash_new();
+    VALUE pins = rb_ary_new_capa(n);
     for (long i = 0; i < n; i++) {
         VALUE str = rb_ary_entry(strings, i);
         StringValue(str); /* raises TypeError if not coercible */
+        VALUE id = rb_obj_id(str);
+        if (!NIL_P(rb_hash_aref(seen, id))) {
+            str = rb_str_dup(str);
+        } else {
+            rb_hash_aset(seen, id, Qtrue);
+            if (OBJ_FROZEN(str)) str = rb_str_dup(str);
+        }
+        rb_ary_store(pins, i, str);
+        rb_str_locktmp(str);
         s->data[i] = RSTRING_PTR(str);
         s->lens[i] = (size_t)RSTRING_LEN(str);
     }
-    teptris_status batch =
-        teptris_parse_batch(s->data, s->lens, (size_t)n, NULL,
-                            s->docs, s->statuses);
-    if (batch != TEPTRIS_OK) {
-        batch_scratch_free(s);
-        rb_raise(eError, "batch parse failed (status %d)", (int)batch);
+    struct batch_parse_arg arg = {s->data, s->lens, (size_t)n,
+                                  s->docs, s->statuses, TEPTRIS_OK};
+    rb_thread_call_without_gvl(batch_parse_without_gvl, &arg,
+                               RUBY_UBF_IO, NULL);
+    for (long i = 0; i < n; i++) {
+        VALUE pin = rb_ary_entry(pins, i);
+        rb_str_unlocktmp(pin);
     }
+    teptris_status batch = arg.batch;
     long first_fail = -1;
     for (long i = 0; i < n; i++) {
         if (s->statuses[i] != TEPTRIS_OK && first_fail == -1) first_fail = i;
@@ -1012,7 +1051,7 @@ static VALUE ext_load_lazy_batch(VALUE self, VALUE strings) {
         VALUE owner = TypedData_Make_Struct(cLazyOwner, lazy_owner,
                                             &lazy_owner_type, o);
         o->doc = s->docs[i];
-        o->input = rb_ary_entry(strings, i);
+        o->input = rb_ary_entry(pins, i); /* pinned: dup or original */
         rb_ary_push(out, lazy_wrap(owner, teptris_document_root(s->docs[i])));
     }
     batch_scratch_free(s);
@@ -1053,7 +1092,11 @@ static VALUE ext_load_slice(int argc, VALUE *argv, VALUE self) {
     if (n == 0) return rb_ary_new();
     unsigned flags = flags_from_opts(opts);
 
-    volatile VALUE *pins = ALLOC_N(VALUE, n);
+    /* a Ruby Array roots the pins (frozen/repeated dups included):
+     * the docs view these buffers through materialization - an
+     * ALLOC_N'd VALUE array is invisible to the GC and the dups would
+     * be collected mid-flight */
+    VALUE pins = rb_ary_new_capa(n);
     const char **data = ALLOC_N(const char *, n);
     size_t *lens = ALLOC_N(size_t, n);
     teptris_document **docs = ALLOC_N(teptris_document *, n);
@@ -1073,15 +1116,18 @@ static VALUE ext_load_slice(int argc, VALUE *argv, VALUE self) {
             rb_hash_aset(seen, id, Qtrue);
             if (OBJ_FROZEN(str)) str = rb_str_dup(str);
         }
-        pins[i] = str;
-        rb_str_locktmp(pins[i]);
-        data[i] = RSTRING_PTR(pins[i]);
-        lens[i] = (size_t)RSTRING_LEN(pins[i]);
+        rb_ary_store(pins, i, str);
+        rb_str_locktmp(str);
+        data[i] = RSTRING_PTR(str);
+        lens[i] = (size_t)RSTRING_LEN(str);
     }
     struct slice_parse_arg arg = {n, data, lens, docs, stats};
     rb_thread_call_without_gvl(slice_parse_without_gvl, &arg,
                                RUBY_UBF_IO, NULL);
-    for (i = 0; i < n; i++) rb_str_unlocktmp(pins[i]);
+    for (i = 0; i < n; i++) {
+        VALUE pin = rb_ary_entry(pins, i);
+        rb_str_unlocktmp(pin);
+    }
 
     VALUE out = rb_ary_new_capa(n);
     keycache kc;
@@ -1091,7 +1137,7 @@ static VALUE ext_load_slice(int argc, VALUE *argv, VALUE self) {
             const char *msg = "parse failed (out of memory)";
             VALUE ex = rb_exc_new(eParseError, msg, (long)strlen(msg));
             kc_free(&kc);
-            xfree(pins); xfree(data); xfree(lens); xfree(docs); xfree(stats);
+            xfree(data); xfree(lens); xfree(docs); xfree(stats);
             rb_exc_raise(ex);
         }
         const teptris_error *e = teptris_document_error(docs[i]);
@@ -1103,7 +1149,7 @@ static VALUE ext_load_slice(int argc, VALUE *argv, VALUE self) {
             long j;
             for (j = i; j < n; j++) teptris_document_free(docs[j]);
             kc_free(&kc);
-            xfree(pins); xfree(data); xfree(lens); xfree(docs); xfree(stats);
+            xfree(data); xfree(lens); xfree(docs); xfree(stats);
             rb_exc_raise(ex);
         }
     }
@@ -1113,7 +1159,7 @@ static VALUE ext_load_slice(int argc, VALUE *argv, VALUE self) {
         teptris_document_free(docs[i]);
     }
     kc_free(&kc);
-    xfree(pins); xfree(data); xfree(lens); xfree(docs); xfree(stats);
+    xfree(data); xfree(lens); xfree(docs); xfree(stats);
     return out;
 }
 
