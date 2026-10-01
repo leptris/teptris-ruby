@@ -30,26 +30,9 @@ def bench(label, docs, workers)
   when "load_batch"
     Teptris::TOML.load_batch(docs.map(&:last))
   when "threads4"
-    # GVL-free parse + plain Ruby threads (load_batch threads: 4):
-    # no cross-Ractor transfers - each thread materializes its own
-    # documents; only the C parse overlaps
-    per = (docs.size.to_f / 4).ceil
-    results = Array.new(docs.size)
-    errs = []
-    m = Mutex.new
-    4.times.map do |ti|
-      Thread.new(ti) do |i|
-        base = i * per
-        slice = docs[base, per] || []
-        begin
-          slice.each_with_index { |(name, src), j| results[base + j] = Teptris::TOML.load(src) }
-        rescue => e
-          m.synchronize { errs << e }
-        end
-      end
-    end.each(&:join)
-    raise errs.first unless errs.empty?
-    results
+    # load_batch(threads: 4): one GVL release per slice, shared key
+    # cache per slice, zero-copy thread passing
+    Teptris::TOML.load_batch(docs.map(&:last), threads: 4)
   when "ractors"
     # dead workers must not wedge the collector: tagged yields,
     # sentinel shutdown, ClosedError tolerance, and a hard timeout

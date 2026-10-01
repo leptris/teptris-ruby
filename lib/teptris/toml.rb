@@ -64,9 +64,11 @@ module Teptris
         n = tomls.size
         threads = [threads, n].min
         return TeptrisExt.load_batch(tomls, opts) if threads <= 1
-        # the C parse pins its input string (rb_str_locktmp - one lock
-        # per string); a repeated object in two slices would double-
-        # lock, so repeated inputs get a dup
+        # load_slice releases the GVL once per slice (no per-document
+        # ping-pong) and shares one key cache across its documents.
+        # Repeated objects are dup'd once each HERE: a repeat landing in
+        # two slices would double-lock across threads (the slice-level
+        # guard cannot see across slices); frozen dup'ing is C-side.
         seen = {}
         tomls = tomls.map do |s|
           next s.dup if seen[s.object_id]
@@ -82,7 +84,7 @@ module Teptris
             base = i * per
             slice = tomls[base, per] || []
             begin
-              loaded = slice.map { |s| TeptrisExt.load(s, opts) }
+              loaded = TeptrisExt.load_slice(slice, opts)
               slice.each_with_index { |_, j| results[base + j] = loaded[j] }
             rescue StandardError => e
               mutex.synchronize do
