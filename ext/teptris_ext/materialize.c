@@ -258,15 +258,15 @@ static void *parse_without_gvl(void *p)
 
 static teptris_document *parse_or_raise(VALUE str) {
     teptris_document *doc = NULL;
-    /* frozen strings cannot take the tmp lock (ruby 4.0 raises
-     * FrozenError - chilled literals); a dup is movable-page-safe the
-     * same way, at one input copy for frozen callers only */
-    volatile VALUE pin = OBJ_FROZEN(str) ? rb_str_dup(str) : str;
-    rb_str_locktmp(pin);
-    struct gvl_parse_arg arg = {RSTRING_PTR(pin), (size_t)RSTRING_LEN(pin),
-                                &doc, TEPTRIS_OK};
+    /* the GVL-free parse reads a private copy: a Ruby-string buffer
+     * can be relocated by a concurrent compacting GC (and frozen
+     * strings reject the tmp lock on ruby 4.0) - the copy cannot */
+    long len = RSTRING_LEN(str);
+    char *buf = ALLOC_N(char, (size_t)len + 1);
+    memcpy(buf, RSTRING_PTR(str), (size_t)len);
+    struct gvl_parse_arg arg = {buf, (size_t)len, &doc, TEPTRIS_OK};
     rb_thread_call_without_gvl(parse_without_gvl, &arg, RUBY_UBF_IO, NULL);
-    rb_str_unlocktmp(pin);
+    xfree(buf);
     teptris_status st = arg.st;
     if (st != TEPTRIS_OK) {
         const teptris_error *e = teptris_document_error(doc);
@@ -741,7 +741,8 @@ static VALUE cLazyOwner, cLazyValue;
 
 typedef struct {
     teptris_document *doc;
-    VALUE input; /* the borrowed views' buffer */
+    VALUE input; /* single-doc path: owned frozen copy (GC-marked) */
+    char *buf;   /* batch path: owned input copy the doc's views use */
 } lazy_owner;
 
 typedef struct {
@@ -752,13 +753,14 @@ typedef struct {
 static void lazy_owner_free(void *p) {
     lazy_owner *o = (lazy_owner *)p;
     if (o->doc != NULL) teptris_document_free(o->doc);
+    if (o->buf != NULL) xfree(o->buf);
     xfree(o);
 }
 static size_t lazy_owner_size(const void *p) { return sizeof(lazy_owner); }
 static void lazy_owner_mark(void *p)
 {
     lazy_owner *o = (lazy_owner *)p;
-    if (o->input) rb_gc_mark(o->input); /* roots the viewed buffer */
+    if (o->input) rb_gc_mark(o->input); /* roots the single-path copy */
 }
 static const rb_data_type_t lazy_owner_type = {
     "TeptrisExt/LazyOwner",
@@ -797,7 +799,7 @@ static VALUE ext_load_lazy(VALUE self, VALUE toml) {
     VALUE owner = TypedData_Make_Struct(cLazyOwner, lazy_owner,
                                         &lazy_owner_type, o);
     o->doc = NULL;
-    o->input = rb_str_new_frozen(toml); /* borrowed views: own a copy */
+    o->input = rb_str_new_frozen(toml); /* owned frozen copy */
     teptris_status st = teptris_parse(RSTRING_PTR(o->input),
                                       (size_t)RSTRING_LEN(o->input),
                                       NULL, &o->doc);
@@ -1005,31 +1007,25 @@ static VALUE ext_load_lazy_batch(VALUE self, VALUE strings) {
      * string - repeated objects dup; frozen strings cannot take the
      * lock, yet compaction can move them) and release the GVL for the
      * whole parse */
-    VALUE seen = rb_hash_new();
-    VALUE pins = rb_ary_new_capa(n);
+    /* the batch parse is pure C over private copies: a Ruby-string
+     * buffer can move under a concurrent compacting GC, and locktmp
+     * does not pin on every platform - copies are C memory, immovable
+     * by construction. Each LazyOwner owns its copy (freed with the
+     * owner): the lazy nodes view these buffers until materialized. */
+    char **bufs = ALLOC_N(char *, n);
     for (long i = 0; i < n; i++) {
         VALUE str = rb_ary_entry(strings, i);
         StringValue(str); /* raises TypeError if not coercible */
-        VALUE id = rb_obj_id(str);
-        if (!NIL_P(rb_hash_aref(seen, id))) {
-            str = rb_str_dup(str);
-        } else {
-            rb_hash_aset(seen, id, Qtrue);
-            if (OBJ_FROZEN(str)) str = rb_str_dup(str);
-        }
-        rb_ary_store(pins, i, str);
-        rb_str_locktmp(str);
-        s->data[i] = RSTRING_PTR(str);
-        s->lens[i] = (size_t)RSTRING_LEN(str);
+        long len = RSTRING_LEN(str);
+        bufs[i] = ALLOC_N(char, (size_t)len + 1);
+        memcpy(bufs[i], RSTRING_PTR(str), (size_t)len);
+        s->data[i] = bufs[i];
+        s->lens[i] = (size_t)len;
     }
     struct batch_parse_arg arg = {s->data, s->lens, (size_t)n,
                                   s->docs, s->statuses, TEPTRIS_OK};
     rb_thread_call_without_gvl(batch_parse_without_gvl, &arg,
                                RUBY_UBF_IO, NULL);
-    for (long i = 0; i < n; i++) {
-        VALUE pin = rb_ary_entry(pins, i);
-        rb_str_unlocktmp(pin);
-    }
     teptris_status batch = arg.batch;
     long first_fail = -1;
     for (long i = 0; i < n; i++) {
@@ -1051,7 +1047,7 @@ static VALUE ext_load_lazy_batch(VALUE self, VALUE strings) {
         VALUE owner = TypedData_Make_Struct(cLazyOwner, lazy_owner,
                                             &lazy_owner_type, o);
         o->doc = s->docs[i];
-        o->input = rb_ary_entry(pins, i); /* pinned: dup or original */
+        o->buf = bufs[i]; /* the owner owns this copy */
         rb_ary_push(out, lazy_wrap(owner, teptris_document_root(s->docs[i])));
     }
     batch_scratch_free(s);
@@ -1092,42 +1088,29 @@ static VALUE ext_load_slice(int argc, VALUE *argv, VALUE self) {
     if (n == 0) return rb_ary_new();
     unsigned flags = flags_from_opts(opts);
 
-    /* a Ruby Array roots the pins (frozen/repeated dups included):
-     * the docs view these buffers through materialization - an
-     * ALLOC_N'd VALUE array is invisible to the GC and the dups would
-     * be collected mid-flight */
-    VALUE pins = rb_ary_new_capa(n);
+    /* the GVL-free parse reads private copies: a Ruby-string buffer
+     * can move under a concurrent compacting GC, and locktmp does not
+     * pin on every platform (windows ruby 3.3 parsed garbage). Copies
+     * are C memory - immovable by construction. Freed after
+     * materialization (the docs view them until then). */
     const char **data = ALLOC_N(const char *, n);
     size_t *lens = ALLOC_N(size_t, n);
     teptris_document **docs = ALLOC_N(teptris_document *, n);
     teptris_status *stats = ALLOC_N(teptris_status, n);
-    /* the tmp lock is one-per-string: repeated objects in the slice
-     * get a dup before pinning (frozen inputs dup for the same reason
-     * - they cannot take the lock, yet compaction can move them) */
-    VALUE seen = rb_hash_new();
+    char **bufs = ALLOC_N(char *, n);
     long i;
     for (i = 0; i < n; i++) {
         VALUE str = rb_ary_entry(strs, i);
         StringValue(str);
-        VALUE id = rb_obj_id(str);
-        if (!NIL_P(rb_hash_aref(seen, id))) {
-            str = rb_str_dup(str);
-        } else {
-            rb_hash_aset(seen, id, Qtrue);
-            if (OBJ_FROZEN(str)) str = rb_str_dup(str);
-        }
-        rb_ary_store(pins, i, str);
-        rb_str_locktmp(str);
-        data[i] = RSTRING_PTR(str);
-        lens[i] = (size_t)RSTRING_LEN(str);
+        long len = RSTRING_LEN(str);
+        bufs[i] = ALLOC_N(char, (size_t)len + 1);
+        memcpy(bufs[i], RSTRING_PTR(str), (size_t)len);
+        data[i] = bufs[i];
+        lens[i] = (size_t)len;
     }
     struct slice_parse_arg arg = {n, data, lens, docs, stats};
     rb_thread_call_without_gvl(slice_parse_without_gvl, &arg,
                                RUBY_UBF_IO, NULL);
-    for (i = 0; i < n; i++) {
-        VALUE pin = rb_ary_entry(pins, i);
-        rb_str_unlocktmp(pin);
-    }
 
     VALUE out = rb_ary_new_capa(n);
     keycache kc;
