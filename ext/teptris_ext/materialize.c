@@ -1023,6 +1023,100 @@ static VALUE ext_load_lazy_batch(VALUE self, VALUE strings) {
  * as ext_load. opts is parsed once; safe_load semantics apply uniformly.
  * The caller's input Array is read-only; its strings stay referenced
  * for the duration of the C call (no separate keeper Array). */
+/* slice-level GVL release: one thread parses K documents under a
+ * single release (no per-document GVL ping-pong), then materializes
+ * them under the GVL with one shared key cache (batch semantics).
+ * All inputs are pinned (dup'd when frozen) across the release. */
+struct slice_parse_arg {
+    long n;
+    const char **data;
+    size_t *lens;
+    teptris_document **docs;
+    teptris_status *stats;
+};
+
+static void *slice_parse_without_gvl(void *p)
+{
+    struct slice_parse_arg *a = (struct slice_parse_arg *)p;
+    for (long i = 0; i < a->n; i++) {
+        a->docs[i] = NULL;
+        a->stats[i] = teptris_parse(a->data[i], a->lens[i], NULL, &a->docs[i]);
+    }
+    return NULL;
+}
+
+static VALUE ext_load_slice(int argc, VALUE *argv, VALUE self) {
+    VALUE strs, opts;
+    rb_scan_args(argc, argv, "11", &strs, &opts);
+    Check_Type(strs, T_ARRAY);
+    long n = RARRAY_LEN(strs);
+    if (n == 0) return rb_ary_new();
+    unsigned flags = flags_from_opts(opts);
+
+    volatile VALUE *pins = ALLOC_N(VALUE, n);
+    const char **data = ALLOC_N(const char *, n);
+    size_t *lens = ALLOC_N(size_t, n);
+    teptris_document **docs = ALLOC_N(teptris_document *, n);
+    teptris_status *stats = ALLOC_N(teptris_status, n);
+    /* the tmp lock is one-per-string: repeated objects in the slice
+     * get a dup before pinning (frozen inputs dup for the same reason
+     * - they cannot take the lock, yet compaction can move them) */
+    VALUE seen = rb_hash_new();
+    long i;
+    for (i = 0; i < n; i++) {
+        VALUE str = rb_ary_entry(strs, i);
+        StringValue(str);
+        VALUE id = rb_obj_id(str);
+        if (!NIL_P(rb_hash_aref(seen, id))) {
+            str = rb_str_dup(str);
+        } else {
+            rb_hash_aset(seen, id, Qtrue);
+            if (OBJ_FROZEN(str)) str = rb_str_dup(str);
+        }
+        pins[i] = str;
+        rb_str_locktmp(pins[i]);
+        data[i] = RSTRING_PTR(pins[i]);
+        lens[i] = (size_t)RSTRING_LEN(pins[i]);
+    }
+    struct slice_parse_arg arg = {n, data, lens, docs, stats};
+    rb_thread_call_without_gvl(slice_parse_without_gvl, &arg,
+                               RUBY_UBF_IO, NULL);
+    for (i = 0; i < n; i++) rb_str_unlocktmp(pins[i]);
+
+    VALUE out = rb_ary_new_capa(n);
+    keycache kc;
+    kc_init(&kc);
+    for (i = 0; i < n; i++) {
+        if (stats[i] != TEPTRIS_OK && docs[i] == NULL) {
+            const char *msg = "parse failed (out of memory)";
+            VALUE ex = rb_exc_new(eParseError, msg, (long)strlen(msg));
+            kc_free(&kc);
+            xfree(pins); xfree(data); xfree(lens); xfree(docs); xfree(stats);
+            rb_exc_raise(ex);
+        }
+        const teptris_error *e = teptris_document_error(docs[i]);
+        if (stats[i] != TEPTRIS_OK) {
+            VALUE ex = rb_exc_new(eParseError, e->message,
+                                  (long)strlen(e->message));
+            rb_iv_set(ex, "@line", SIZET2NUM(e->line));
+            rb_iv_set(ex, "@column", SIZET2NUM(e->column));
+            long j;
+            for (j = i; j < n; j++) teptris_document_free(docs[j]);
+            kc_free(&kc);
+            xfree(pins); xfree(data); xfree(lens); xfree(docs); xfree(stats);
+            rb_exc_raise(ex);
+        }
+    }
+    for (i = 0; i < n; i++) {
+        rb_ary_store(out, i,
+                     obj_from_node(teptris_document_root(docs[i]), flags, &kc));
+        teptris_document_free(docs[i]);
+    }
+    kc_free(&kc);
+    xfree(pins); xfree(data); xfree(lens); xfree(docs); xfree(stats);
+    return out;
+}
+
 static VALUE ext_load_batch(int argc, VALUE *argv, VALUE self) {
     VALUE strings, opts;
     rb_scan_args(argc, argv, "11", &strings, &opts);
@@ -1080,6 +1174,7 @@ void Init_teptris_ext(void) {
     rb_define_module_function(m, "load", ext_load, -1);
     rb_define_module_function(m, "load_lazy", ext_load_lazy, 1);
     rb_define_module_function(m, "load_batch", ext_load_batch, -1);
+    rb_define_module_function(m, "load_slice", ext_load_slice, -1);
     rb_define_module_function(m, "load_lazy_batch", ext_load_lazy_batch, 1);
     cLazyOwner = rb_define_class_under(m, "LazyOwner", rb_cObject);
     cLazyValue = rb_define_class_under(m, "LazyValue", rb_cObject);
