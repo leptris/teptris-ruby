@@ -256,28 +256,6 @@ static void *parse_without_gvl(void *p)
     return NULL;
 }
 
-static teptris_document *parse_or_raise(VALUE str) {
-    teptris_document *doc = NULL;
-    /* the GVL-free parse reads a private copy: a Ruby-string buffer
-     * can be relocated by a concurrent compacting GC (and frozen
-     * strings reject the tmp lock on ruby 4.0) - the copy cannot */
-    long len = RSTRING_LEN(str);
-    char *buf = ALLOC_N(char, (size_t)len + 1);
-    memcpy(buf, RSTRING_PTR(str), (size_t)len);
-    struct gvl_parse_arg arg = {buf, (size_t)len, &doc, TEPTRIS_OK};
-    rb_thread_call_without_gvl(parse_without_gvl, &arg, RUBY_UBF_IO, NULL);
-    xfree(buf);
-    teptris_status st = arg.st;
-    if (st != TEPTRIS_OK) {
-        const teptris_error *e = teptris_document_error(doc);
-        VALUE ex = rb_exc_new(eParseError, e->message, (long)strlen(e->message));
-        rb_iv_set(ex, "@line", SIZET2NUM(e->line));
-        rb_iv_set(ex, "@column", SIZET2NUM(e->column));
-        teptris_document_free(doc);
-        rb_exc_raise(ex);
-    }
-    return doc;
-}
 
 static VALUE ext_load(int argc, VALUE *argv, VALUE self) {
     VALUE str, opts;
@@ -292,11 +270,29 @@ static VALUE ext_load(int argc, VALUE *argv, VALUE self) {
         if (RTEST(ft)) flags |= FMT_FORBID_TIME;
         if (RTEST(fd)) flags |= FMT_FORBID_DATE;
     }
-    teptris_document *doc = parse_or_raise(str);
+    /* the parse is pure C over a private copy, GVL-free; the copy
+     * must outlive materialization - the document's strings are
+     * zero-copy views into it (a real UAF on glibc when freed early) */
+    long len = RSTRING_LEN(str);
+    char *cbuf = ALLOC_N(char, (size_t)len + 1);
+    memcpy(cbuf, RSTRING_PTR(str), (size_t)len);
+    teptris_document *doc = NULL;
+    struct gvl_parse_arg arg = {cbuf, (size_t)len, &doc, TEPTRIS_OK};
+    rb_thread_call_without_gvl(parse_without_gvl, &arg, RUBY_UBF_IO, NULL);
+    if (arg.st != TEPTRIS_OK) {
+        const teptris_error *e = teptris_document_error(doc);
+        VALUE ex = rb_exc_new(eParseError, e->message, (long)strlen(e->message));
+        rb_iv_set(ex, "@line", SIZET2NUM(e->line));
+        rb_iv_set(ex, "@column", SIZET2NUM(e->column));
+        xfree(cbuf);
+        teptris_document_free(doc);
+        rb_exc_raise(ex);
+    }
     keycache kc;
     kc_init(&kc);
     VALUE out = obj_from_node(teptris_document_root(doc), flags, &kc);
     kc_free(&kc);
+    xfree(cbuf);
     teptris_document_free(doc);
     return out;
 }
