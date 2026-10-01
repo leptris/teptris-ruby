@@ -1,4 +1,5 @@
 #include <ruby.h>
+#include <ruby/thread.h>
 #include <ruby/encoding.h>
 #include "teptris/teptris.h"
 #include "teptris/plan.h"
