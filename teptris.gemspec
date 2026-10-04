@@ -10,6 +10,17 @@ Gem::Specification.new do |spec|
     "parser/emitter. API shape mirrors the tomlib gem."
   spec.homepage = "https://github.com/leptris/teptris-ruby"
   spec.license = "MIT"
+  spec.metadata = {
+    "homepage_uri" => spec.homepage,
+    "source_code_uri" => "https://github.com/leptris/teptris-ruby",
+    "changelog_uri" =>
+      "https://github.com/leptris/teptris-ruby/releases",
+    "documentation_uri" =>
+      "https://leptris.github.io/docs/teptris-ruby",
+    "bug_tracker_uri" =>
+      "https://github.com/leptris/teptris-ruby/issues",
+    "rubygems_mfa_required" => "true",
+  }
   spec.required_ruby_version = ">= 3.0"
   spec.files = Dir["lib/**/*.rb"] + Dir["lib/teptris_ext.*"] +
               Dir["sig/*.rbs"] + ["Steepfile"]
