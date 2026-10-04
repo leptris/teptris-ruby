@@ -11,7 +11,8 @@ Gem::Specification.new do |spec|
   spec.homepage = "https://github.com/leptris/teptris-ruby"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.0"
-  spec.files = Dir["lib/**/*.rb"] + Dir["lib/teptris_ext.*"]
+  spec.files = Dir["lib/**/*.rb"] + Dir["lib/teptris_ext.*"] +
+              Dir["sig/*.rbs"] + ["Steepfile"]
   spec.bindir = "bin"
   spec.executables = []
 end
