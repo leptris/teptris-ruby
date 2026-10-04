@@ -1,0 +1,117 @@
+module Teptris
+  class Error < StandardError
+  end
+
+  class ParseError < Error
+    attr_reader line: Integer
+    attr_reader column: Integer
+
+    def initialize: (String message, ?Integer line, ?Integer column) -> void
+  end
+
+  module TOML
+    VERSION: String
+
+    # Eager load: String -> Hash with String keys. Datetime contract
+    # (the tomlib shape): Time with zone for offset datetimes, local
+    # Time for local datetimes, Date for dates, "HH:MM:SS" String for
+    # local times.
+    def self.load: (String toml) -> Hash[String, untyped]
+
+    def self.load_file: (String path) -> Hash[String, untyped]
+
+    def self.safe_load: (String toml, ?permitted_classes: Array[Class]?,
+                         ?datetime_policy: :native | :string)
+                       -> Hash[String, untyped]
+
+    # One parse; host objects materialize only along accessed paths.
+    def self.load_lazy: (String toml) -> TeptrisExt::LazyValue
+
+    def self.load_batch: (Array[String] tomls, ?safe_load: Array[Class]?,
+                          ?datetime_policy: :native | :string,
+                          ?threads: Integer)
+                        -> Array[Hash[String, untyped]]
+
+    def self.load_lazy_batch: (Array[String] tomls)
+                            -> Array[TeptrisExt::LazyValue]
+
+    def self.load_files: (Array[String] paths, ?safe_load: Array[Class]?,
+                          ?datetime_policy: :native | :string)
+                        -> Array[Hash[String, untyped]]
+
+    def self.load_schema: (String toml, Descriptor descriptor)
+                         -> Hash[String, untyped]
+
+    def self.dump: (untyped obj) -> String
+
+    def self.engine_version: () -> String
+  end
+
+  # Tree-shaped schema descriptor: compile once with .build, then
+  # materialize documents against it with #walk — unplanned keys are
+  # never materialized (the py twin is teptris.Descriptor).
+  class Descriptor
+    def self.build: (Hash[Symbol, untyped] tree) -> Descriptor
+
+    attr_reader rows: Array[[String, Integer, Integer]]
+    attr_reader first_row: Array[Integer]
+
+    def walk: (String toml) -> Hash[String, untyped]
+  end
+end
+
+# The C extension's surface (defined in ext/teptris_ext). The gem's
+# public API is Teptris::TOML; these module functions are the binding
+# layer underneath it.
+module TeptrisExt
+  # Lazy wrapper: one parse, scalars materialize on access, to_h/to_a
+  # flatten to the eager shapes.
+  class LazyValue
+    def []: (String key) -> (LazyValue | untyped)
+           | (Integer index) -> (LazyValue | untyped)
+
+    def at: (Integer index) -> (LazyValue | untyped)
+
+    def dig: (*String keys) -> (LazyValue | untyped)
+
+    def kind: () -> String
+
+    def size: () -> Integer
+
+    def each: () { (LazyValue | untyped) -> void } -> LazyValue
+             | () -> Enumerator[LazyValue | untyped, LazyValue]
+
+    def value: () -> untyped
+
+    def to_h: () -> Hash[String, untyped]
+
+    def to_a: () -> Array[untyped]
+
+    def ==: (untyped other) -> bool
+
+    include Enumerable[LazyValue | untyped]
+  end
+
+  def self.load: (String toml, ?Hash[Symbol, untyped]? opts)
+               -> Hash[String, untyped]
+
+  def self.load_lazy: (String toml) -> LazyValue
+
+  def self.load_batch: (Array[String] tomls, Hash[Symbol, untyped] opts)
+                     -> Array[Hash[String, untyped]]
+
+  def self.load_slice: (Array[String] tomls, Integer threads,
+                        Hash[Symbol, untyped] opts)
+                     -> Array[Hash[String, untyped]]
+
+  def self.load_lazy_batch: (Array[String] tomls) -> Array[LazyValue]
+
+  def self.dump: (untyped obj) -> String
+
+  def self.engine_version: () -> String
+
+  def self.plan_build: (Array[[String, Integer, Integer]] rows,
+                        Array[Integer] first_row) -> untyped
+
+  def self.plan_emit: (untyped handle, String toml) -> Hash[String, untyped]
+end
