@@ -10,8 +10,9 @@ Gem::Specification.new do |spec|
     "parser/emitter. API shape mirrors the tomlib gem."
   spec.homepage = "https://github.com/leptris/teptris-ruby"
   spec.license = "MIT"
+  # no homepage_uri in metadata: it duplicates spec.homepage and
+  # rubygems.org shows only the first of identical URIs (build warning)
   spec.metadata = {
-    "homepage_uri" => spec.homepage,
     "source_code_uri" => "https://github.com/leptris/teptris-ruby",
     "changelog_uri" =>
       "https://github.com/leptris/teptris-ruby/releases",
