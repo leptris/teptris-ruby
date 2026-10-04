@@ -1,4 +1,9 @@
 module Teptris
+  VERSION: String
+
+  # mirrored from the engine's teptris_status (lib/teptris.rb)
+  TEPTRIS_OK: Integer
+
   class Error < StandardError
   end
 
@@ -45,12 +50,22 @@ module Teptris
     def self.dump: (untyped obj) -> String
 
     def self.engine_version: () -> String
+
+    def self._validate_batch!: (untyped input, untyped safe_load,
+                                :native | :string datetime_policy,
+                                ?kind: Symbol) -> void
+
+    def self._safe_load_opts: (untyped safe_load,
+                               :native | :string datetime_policy)
+                             -> Hash[Symbol, untyped]?
   end
 
   # Tree-shaped schema descriptor: compile once with .build, then
   # materialize documents against it with #walk — unplanned keys are
   # never materialized (the py twin is teptris.Descriptor).
   class Descriptor
+    KINDS: Hash[Symbol, Integer]
+
     def self.build: (Hash[Symbol, untyped] tree) -> Descriptor
 
     attr_reader rows: Array[[String, Integer, Integer]]
@@ -97,11 +112,10 @@ module TeptrisExt
 
   def self.load_lazy: (String toml) -> LazyValue
 
-  def self.load_batch: (Array[String] tomls, Hash[Symbol, untyped] opts)
+  def self.load_batch: (Array[String] tomls, Hash[Symbol, untyped]? opts)
                      -> Array[Hash[String, untyped]]
 
-  def self.load_slice: (Array[String] tomls, Integer threads,
-                        Hash[Symbol, untyped] opts)
+  def self.load_slice: (Array[String] tomls, Hash[Symbol, untyped]? opts)
                      -> Array[Hash[String, untyped]]
 
   def self.load_lazy_batch: (Array[String] tomls) -> Array[LazyValue]
