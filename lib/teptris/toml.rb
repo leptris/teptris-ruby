@@ -25,6 +25,7 @@ module Teptris
         unless %i[native string].include?(datetime_policy)
           raise ArgumentError, "datetime_policy must be :native or :string"
         end
+        # @type var opts: Hash[Symbol, untyped]
         opts = {}
         opts[:string_datetimes] = true if datetime_policy == :string
         if permitted_classes && datetime_policy == :native
@@ -69,6 +70,7 @@ module Teptris
         # Repeated objects are dup'd once each HERE: a repeat landing in
         # two slices would double-lock across threads (the slice-level
         # guard cannot see across slices); frozen dup'ing is C-side.
+        # @type var seen: Hash[Integer, bool]
         seen = {}
         tomls = tomls.map do |s|
           next s.dup if seen[s.object_id]
@@ -77,6 +79,7 @@ module Teptris
         end
         per = (n.to_f / threads).ceil
         results = Array.new(n)
+        # @type var first_error: [Integer, untyped]?
         first_error = nil
         mutex = Mutex.new
         threads.times.map do |ti|
@@ -157,6 +160,7 @@ module Teptris
       end
 
       def _safe_load_opts(safe_load, datetime_policy)
+        # @type var opts: Hash[Symbol, untyped]
         opts = {}
         opts[:string_datetimes] = true if datetime_policy == :string
         if safe_load && datetime_policy == :native

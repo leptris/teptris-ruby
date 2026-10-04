@@ -32,7 +32,9 @@ class Teptris::Descriptor
     # siblings that follow a :nested child into the sub-plan's range —
     # the 0.2.29 bug (every array-of-tables element grew stray nil
     # rows).
+    # @type var plans: Array[Hash[Symbol, untyped]]
     plans = []
+    # @type var index_of: Hash[Integer, Integer]
     index_of = {}
     collect = lambda do |t|
       unless index_of.key?(t.object_id)
