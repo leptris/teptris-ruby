@@ -16,8 +16,8 @@ RSpec.describe Teptris::TOML do
       [[aot]]
       n = "second"
     TOML
-    expect(doc).to eq("root" => true, "a" => {"x" => 1},
-                      "aot" => [{"n" => "first"}, {"n" => "second"}])
+    expect(doc).to eq("root" => true, "a" => { "x" => 1 },
+                      "aot" => [{ "n" => "first" }, { "n" => "second" }])
   end
 
   it "maps datetimes per the tomlib contract" do
@@ -47,30 +47,30 @@ RSpec.describe Teptris::TOML do
   end
 
   it "dumps and roundtrips" do
-    obj = {"title" => "teptris", "nested" => {"x" => 1},
-           "aot" => [{"n" => 1}, {"n" => 2}], "f" => 1.5}
+    obj = { "title" => "teptris", "nested" => { "x" => 1 },
+            "aot" => [{ "n" => 1 }, { "n" => 2 }], "f" => 1.5 }
     expect(described_class.load(described_class.dump(obj))).to eq(obj)
   end
 
   it "dumps times and dates" do
-    obj = {"at" => Time.utc(2026, 9, 13, 8, 0, 0), "on" => Date.new(2026, 9, 13)}
+    obj = { "at" => Time.utc(2026, 9, 13, 8, 0, 0), "on" => Date.new(2026, 9, 13) }
     expect(described_class.dump(obj))
       .to eq("at = 2026-09-13T08:00:00Z\non = 2026-09-13\n")
   end
 
   it "dumps datetimes across zones, eras, and leap days" do
-    obj = {"jan" => Time.new(2026, 1, 2, 3, 4, 5, "-08:00"),
-           "pre_epoch" => Time.utc(1969, 12, 31, 23, 59, 59),
-           "frac" => Time.new(2026, 9, 13, 10, 30, 15.5, "+05:30"),
-           "leap" => Time.utc(2000, 2, 29, 12, 0, 0),
-           "local" => Time.local(2026, 6, 15, 1, 2, 3.25)}
+    obj = { "jan" => Time.new(2026, 1, 2, 3, 4, 5, "-08:00"),
+            "pre_epoch" => Time.utc(1969, 12, 31, 23, 59, 59),
+            "frac" => Time.new(2026, 9, 13, 10, 30, 15.5, "+05:30"),
+            "leap" => Time.utc(2000, 2, 29, 12, 0, 0),
+            "local" => Time.local(2026, 6, 15, 1, 2, 3.25) }
     described_class.load(described_class.dump(obj)).each do |k, v|
       expect(v).to be_within(1e-6).of(obj[k])
     end
   end
 
   it "dumps mixed arrays as inline and homogeneous table arrays as sections" do
-    obj = {"mix" => [{"q" => 1}, 2], "nested" => [[1, 2], [3]], "aot" => [{"n" => 1}]}
+    obj = { "mix" => [{ "q" => 1 }, 2], "nested" => [[1, 2], [3]], "aot" => [{ "n" => 1 }] }
     toml = described_class.dump(obj)
     expect(toml).to include("mix = [{q = 1}, 2]")
     expect(toml).to include("nested = [[1, 2], [3]]")
@@ -80,8 +80,8 @@ RSpec.describe Teptris::TOML do
 
   it "rejects undumpable roots, values, and out-of-range integers" do
     expect { described_class.dump([1]) }.to raise_error(ArgumentError)
-    expect { described_class.dump({"x" => Object.new}) }.to raise_error(Teptris::Error)
-    expect { described_class.dump({"x" => 2**70}) }.to raise_error(RangeError)
+    expect { described_class.dump({ "x" => Object.new }) }.to raise_error(Teptris::Error)
+    expect { described_class.dump({ "x" => 2**70 }) }.to raise_error(RangeError)
   end
 
   it "roundtrips the whole bench corpus through the native dump" do
@@ -103,7 +103,7 @@ RSpec.describe Teptris::TOML do
     end
 
     it "parses optional seconds in times and datetimes" do
-      doc = described_class.load(%{t = 07:32\ndt = 1979-05-27T07:32\noff = 1979-05-27 07:32Z\n})
+      doc = described_class.load(%(t = 07:32\ndt = 1979-05-27T07:32\noff = 1979-05-27 07:32Z\n))
       expect(doc["t"]).to eq("07:32:00")
       expect(doc["dt"]).to eq(Time.local(1979, 5, 27, 7, 32))
       expect(doc["off"].utc).to eq(Time.utc(1979, 5, 27, 7, 32))
@@ -134,7 +134,7 @@ RSpec.describe Teptris::TOML do
         size = 2
       TOML
       expect(doc.dig("fruit", "apple", "texture")).to eq("smooth" => true)
-      expect(doc.dig("fruit", "apple", "seeds")).to eq(["size" => 2])
+      expect(doc.dig("fruit", "apple", "seeds")).to eq([{ "size" => 2 }])
     end
 
     it "still rejects exact dotted-table redefinition" do
@@ -157,7 +157,7 @@ RSpec.describe Teptris::TOML do
       "[t]\nx = 1\n[t.u]\ny = [1, 2]\n",
       "[[a]]\nn = 1\n[[a]]\nn = 2\n",
       "d = 1979-05-27\no = 1979-05-27T07:32:00Z\nl = 1979-05-27T07:32:00\nt = 07:32:00\n",
-      "k.'quoted key' = 1\n",
+      "k.'quoted key' = 1\n"
     ]
     cases.each_with_index do |toml, i|
       it "matches tomlib on case #{i}" do

@@ -5,19 +5,19 @@ RSpec.describe Teptris::TOML do
   describe ".load_batch" do
     it "returns an Array of eagerly materialized Hashes" do
       out = described_class.load_batch([
-        "a = 1\n",
-        "b = \"y\"\n",
-        "[t]\nk = 1\n",
-      ])
-      expect(out).to eq([{"a" => 1}, {"b" => "y"}, {"t" => {"k" => 1}}])
+                                         "a = 1\n",
+                                         "b = \"y\"\n",
+                                         "[t]\nk = 1\n"
+                                       ])
+      expect(out).to eq([{ "a" => 1 }, { "b" => "y" }, { "t" => { "k" => 1 } }])
     end
 
     it "preserves the tomlib datetime contract across the batch" do
       out = described_class.load_batch([
-        "o = 1979-05-27T07:32:00Z\n",
-        "d = 1979-05-27\n",
-        "t = 07:32:00\n",
-      ])
+                                         "o = 1979-05-27T07:32:00Z\n",
+                                         "d = 1979-05-27\n",
+                                         "t = 07:32:00\n"
+                                       ])
       expect(out[0]["o"]).to be_a(Time)
       expect(out[0]["o"].utc).to eq(Time.utc(1979, 5, 27, 7, 32, 0))
       expect(out[1]["d"]).to eq(Date.new(1979, 5, 27))
@@ -31,7 +31,7 @@ RSpec.describe Teptris::TOML do
     it "honours datetime_policy :string uniformly" do
       out = described_class.load_batch(
         ["o = 1979-05-27T07:32:00Z\n", "d = 1979-05-27\n"],
-        datetime_policy: :string,
+        datetime_policy: :string
       )
       expect(out[0]["o"]).to eq("1979-05-27T07:32:00Z")
       expect(out[1]["d"]).to eq("1979-05-27")
@@ -40,25 +40,25 @@ RSpec.describe Teptris::TOML do
     it "honours permitted_classes (forbid Time) across the batch" do
       out = described_class.load_batch(
         ["d1 = 1979-05-27\n", "d2 = 1979-05-28\n"],
-        safe_load: [String, Integer, Date],
+        safe_load: [String, Integer, Date]
       )
       expect(out[0]["d1"]).to be_a(Date)
       expect(out[1]["d2"]).to be_a(Date)
     end
 
     it "raises Teptris::Error on a datetime the permitted_classes forbid" do
-      expect {
+      expect do
         described_class.load_batch(
           ["o = 1979-05-27T07:32:00Z\n"],
-          safe_load: [String, Integer, Date],
+          safe_load: [String, Integer, Date]
         )
-      }.to raise_error(Teptris::Error, /not in permitted_classes/)
+      end.to raise_error(Teptris::Error, /not in permitted_classes/)
     end
 
     it "raises ParseError with line/column on the first failing doc" do
-      expect {
+      expect do
         described_class.load_batch(["a = 1\n", "b = ?\n", "c = 3\n"])
-      }.to raise_error(Teptris::ParseError) { |e|
+      end.to raise_error(Teptris::ParseError) { |e|
         expect(e.line).to eq(1)
         expect(e.column).to eq(5)
       }
@@ -90,9 +90,9 @@ RSpec.describe Teptris::TOML do
     end
 
     it "raises ParseError on the first failing doc" do
-      expect {
+      expect do
         described_class.load_lazy_batch(["a = 1\n", "b = ?\n"])
-      }.to raise_error(Teptris::ParseError)
+      end.to raise_error(Teptris::ParseError)
     end
   end
 
@@ -110,7 +110,7 @@ RSpec.describe Teptris::TOML do
 
     it "reads each path and returns Hashes in order" do
       out = described_class.load_files([@p1, @p2])
-      expect(out).to eq([{"a" => 1}, {"b" => 2}])
+      expect(out).to eq([{ "a" => 1 }, { "b" => 2 }])
     end
 
     it "raises a clear ArgumentError for non-Array input" do

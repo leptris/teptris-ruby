@@ -32,11 +32,11 @@ RSpec.describe "dump goldens (teptris <-> tomlib/tomlrb differential)" do
       mll = '''literal
         kept
       '''
-      TOML
-      { "s" => "tab\there é é \"quoted\" back\\slash",
-        "lit" => 'C:\Users\no\escapes\here',
-        "ml" => "line1\nline2\n",
-        "mll" => "literal\n  kept\n" }],
+    TOML
+                  { "s" => "tab\there é é \"quoted\" back\\slash",
+                    "lit" => 'C:\Users\no\escapes\here',
+                    "ml" => "line1\nline2\n",
+                    "mll" => "literal\n  kept\n" }],
     "numbers" => [<<~'TOML',
       int = 9_223_372_036_854_775_807
       neg = -17
@@ -47,30 +47,30 @@ RSpec.describe "dump goldens (teptris <-> tomlib/tomlrb differential)" do
       negzero = -0.0
       inf = inf
       ninf = -inf
-      TOML
-      { "int" => 9_223_372_036_854_775_807, "neg" => -17,
-        "hex" => 0xdeadbeef, "oct" => 0o755, "bin" => 0b11010110,
-        "float" => 6.626e-34, "negzero" => -0.0,
-        "inf" => Float::INFINITY, "ninf" => -Float::INFINITY }],
+    TOML
+                  { "int" => 9_223_372_036_854_775_807, "neg" => -17,
+                    "hex" => 0xdeadbeef, "oct" => 0o755, "bin" => 0b11010110,
+                    "float" => 6.626e-34, "negzero" => -0.0,
+                    "inf" => Float::INFINITY, "ninf" => -Float::INFINITY }],
     "datetimes" => [<<~'TOML',
       odt = 1979-05-27T07:32:00Z
       odt2 = 1979-05-27T00:32:00-07:00
       date = 1979-05-27
       time = 07:32:00
       timef = 00:32:00.999
-      TOML
-      { "odt" => Time.utc(1979, 5, 27, 7, 32, 0),
-        "odt2" => Time.new(1979, 5, 27, 0, 32, 0, "-07:00"),
-        "date" => Date.new(1979, 5, 27),
-        "time" => "07:32:00",
-        "timef" => "00:32:00.999" }],
+    TOML
+                    { "odt" => Time.utc(1979, 5, 27, 7, 32, 0),
+                      "odt2" => Time.new(1979, 5, 27, 0, 32, 0, "-07:00"),
+                      "date" => Date.new(1979, 5, 27),
+                      "time" => "07:32:00",
+                      "timef" => "00:32:00.999" }],
     # machine-zone parity (NOT golden-pinned: tomlib's dump stamps the
     # machine offset for local Times, and so does teptris — the values
     # round-trip consistently on any single machine)
     "datetimes_local" => [<<~'TOML',
       ldt = 1979-05-27T07:32:00
-      TOML
-      { "ldt" => Time.local(1979, 5, 27, 7, 32, 0) }],
+    TOML
+                          { "ldt" => Time.local(1979, 5, 27, 7, 32, 0) }],
     "containers" => [<<~'TOML',
       title = "root"
 
@@ -91,13 +91,13 @@ RSpec.describe "dump goldens (teptris <-> tomlib/tomlrb differential)" do
 
       [[deep.deeper.deepest]]
       ok = true
-      TOML
-      { "title" => "root",
-        "tbl" => { "x" => 1, "nested" => { "a" => 2, "b" => [3, 4] },
-                   "deep" => { "y" => "z" } },
-        "aot" => [{ "n" => 1, "tags" => %w[a b] },
-                  { "n" => 2, "tags" => [] }],
-        "deep" => { "deeper" => { "deepest" => [{ "ok" => true }] } } }],
+    TOML
+                     { "title" => "root",
+                       "tbl" => { "x" => 1, "nested" => { "a" => 2, "b" => [3, 4] },
+                                  "deep" => { "y" => "z" } },
+                       "aot" => [{ "n" => 1, "tags" => %w[a b] },
+                                 { "n" => 2, "tags" => [] }],
+                       "deep" => { "deeper" => { "deepest" => [{ "ok" => true }] } } }]
   }.freeze
 
   golden_dir = File.expand_path("fixtures/dump_goldens", __dir__)

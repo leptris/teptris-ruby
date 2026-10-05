@@ -27,15 +27,12 @@ Dir[File.join(corpus, "*.toml")].sort.each do |path|
   bytes = obj_t.inspect.bytesize
   row = {}
   { "teptris" => [->(o) { Teptris::TOML.dump(o) }, obj_t],
-    "tomlib"  => [->(o) { Tomlib.dump(o) }, obj_l] }.each do |name, (call, obj)|
-    begin
-      ms = bench(call, obj, reps)
-      row[name] = format("%7.2f ms", ms)
-    rescue StandardError => e
-      row[name] = "ERROR: #{e.message[0, 40]}"
-    end
+    "tomlib" => [->(o) { Tomlib.dump(o) }, obj_l] }.each do |name, (call, obj)|
+    ms = bench(call, obj, reps)
+    row[name] = format("%7.2f ms", ms)
+  rescue StandardError => e
+    row[name] = "ERROR: #{e.message[0, 40]}"
   end
-  ratio = (row["teptris"] =~ /ms/ && row["tomlib"] =~ /ms/) ? nil : nil
   puts format("%-20s obj~%dkB teptris %s | tomlib %s", File.basename(path),
               bytes / 1024, row["teptris"], row["tomlib"])
 end

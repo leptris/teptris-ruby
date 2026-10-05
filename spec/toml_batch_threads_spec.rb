@@ -2,16 +2,16 @@ require "spec_helper"
 
 RSpec.describe "load_batch threads:" do
   CORPUS = Dir[File.expand_path("../../teptris/bench-corpus/*.toml",
-                               __dir__)].sort.map { |p| File.read(p) }
+                                __dir__)].sort.map { |p| File.read(p) }
   SMALL = ["a = 1\n[x]\nb = 2\n", "t = 07:32:00\n", "s = 'v'\n[[k]]\ni = 1\n"] * 20
 
   before(:all) do
     # any corpus available? fall back to generated shapes
-    @docs = if CORRUPT_EMPTY = CORPUS.empty?
-      Array.new(60) { |i| "k#{i} = #{i}\n[t#{i}]\ns = \"str #{i}\"\n" }
-    else
-      CORPUS + CORPUS
-    end
+    @docs = if (CORRUPT_EMPTY = CORPUS.empty?)
+              Array.new(60) { |i| "k#{i} = #{i}\n[t#{i}]\ns = \"str #{i}\"\n" }
+            else
+              CORPUS + CORPUS
+            end
   end
 
   it "parallel results equal sequential results" do
@@ -42,10 +42,13 @@ RSpec.describe "load_batch threads:" do
 
   it "survives compaction during parallel load (string pinning)" do
     skip "compaction unavailable" unless GC.respond_to?(:compact)
-    stress = Array.new(80) { |i| "k#{i} = #{i}\nn#{i} = 1.5\n[s#{i}]\nx = \"#{'y' * 64}\"\n" }
+    stress = Array.new(80) { |i| "k#{i} = #{i}\nn#{i} = 1.5\n[s#{i}]\nx = \"#{"y" * 64}\"\n" }
     seq = Teptris::TOML.load_batch(stress)
     th = Thread.new do
-      5.times { GC.start(full_mark: true, immediate_sweep: true); GC.compact }
+      5.times do
+        GC.start(full_mark: true, immediate_sweep: true)
+        GC.compact
+      end
     end
     par = Teptris::TOML.load_batch(stress, threads: 4)
     th.join

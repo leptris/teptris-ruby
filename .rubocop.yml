@@ -1,0 +1,74 @@
+AllCops:
+  TargetRubyVersion: 3.0
+  SuggestExtensions: false
+  Exclude:
+    - "pkg/**/*"
+    - "tmp/**/*"
+    - "vendor/**/*"
+    - "bin/**/*"
+
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/StringLiteralsInInterpolation:
+  EnforcedStyle: double_quotes
+
+# Benchmarks and specs are measured/exhaustive by design: long blocks,
+# unannotated format tokens, self-equality asserts (testing ==), and
+# constants defined per-example blocks are all intentional there.
+# lib/ stays fully enforced.
+Metrics:
+  Exclude:
+    - "benchmark/**/*"
+    - "spec/**/*"
+Style/FormatStringToken:
+  Exclude:
+    - "benchmark/**/*"
+Style/FrozenStringLiteralComment:
+  Include:
+    - "lib/**/*"
+    - "ext/**/*.rb"
+Lint/ConstantDefinitionInBlock:
+  Exclude:
+    - "spec/**/*"
+    - "benchmark/**/*"
+Lint/HashCompareByIdentity:
+  Exclude:
+    - "spec/**/*"
+    - "benchmark/**/*"
+Style/Documentation:
+  Enabled: false
+
+# mkmf's own API is global-variable based; extconf.rb cannot avoid it
+Style/GlobalVars:
+  Exclude:
+    - "ext/**/extconf.rb"
+Style/ClassAndModuleChildren:
+  EnforcedStyle: compact
+
+# The parse/emit fast paths are deliberately long and branchy, with
+# the reasoning in adjacent comments - restructure-for-the-cop would
+# put indirection on hot code. Thresholds name the codebase's reality.
+Metrics/MethodLength:
+  Max: 40
+Metrics/CyclomaticComplexity:
+  Max: 12
+Metrics/PerceivedComplexity:
+  Max: 14
+Metrics/AbcSize:
+  Max: 40
+Metrics/ModuleLength:
+  Max: 120
+Metrics/ClassLength:
+  Max: 120
+Metrics/AbcSize:
+  Max: 50
+
+# Rakefile: the :compile task's env matrix is a flat list by design;
+# the optional require is the documented pattern for a soft dev dep.
+Metrics/BlockLength:
+  Exclude:
+    - "Rakefile"
+Lint/SuppressedException:
+  Exclude:
+    - "Rakefile"

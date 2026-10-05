@@ -64,7 +64,7 @@ task :compile do
     sh "python3 #{File.join(cmake_src, "scripts/gen_bench_corpus.py")} #{corpus}"
     sh ["bash", File.join(cmake_src, "scripts/build-pgo.sh"), cmake_src, build, corpus, toolchain].join(" ")
   else
-    sh "cmake -B #{build} -S #{cmake_src} #{(CMAKE_FLAGS + toolchain).join(' ')}"
+    sh "cmake -B #{build} -S #{cmake_src} #{(CMAKE_FLAGS + toolchain).join(" ")}"
     sh "cmake --build #{build} --config Release -j"
   end
 
@@ -161,25 +161,25 @@ task "gem:source" do
   build_gem(spec)
 end
 
-platforms = [
-  "x64-mingw32",
-  "x64-mingw-ucrt",
-  "aarch64-mingw-ucrt",
-  "x86_64-linux",
-  "x86_64-linux-musl",
-  "aarch64-linux",
-  "aarch64-linux-musl",
-  "arm-linux",
-  "arm-linux-musl",
-  "powerpc64le-linux",
-  "s390x-linux",
-  "s390x-linux-musl",
-  "x86_64-darwin",
-  "arm64-darwin",
+platforms = %w[
+  x64-mingw32
+  x64-mingw-ucrt
+  aarch64-mingw-ucrt
+  x86_64-linux
+  x86_64-linux-musl
+  aarch64-linux
+  aarch64-linux-musl
+  arm-linux
+  arm-linux-musl
+  powerpc64le-linux
+  s390x-linux
+  s390x-linux-musl
+  x86_64-darwin
+  arm64-darwin
 ].freeze
 
 platforms.each do |platform|
-  mingw = platform.include?("mingw")
+  platform.include?("mingw")
 
   # Pack a pre-compiled gem from whatever native files already sit in
   # lib/ — used by CI's fat-gem assembly and never compiles. Every
@@ -191,8 +191,10 @@ platforms.each do |platform|
     abort "no native extension under lib/ for #{platform} — run rake compile first" if natives.empty?
     vendor_engine
     # doctrine gate: a platform gem carries the binary AND the source
-    abort "doctrine: engine source missing under ext/teptris_ext/engine for #{platform}"       unless Dir["ext/teptris_ext/engine/src/teptris/**/*.{c,h}"].size >= 20
-    abort "doctrine: rebuild README missing for #{platform}"       unless File.exist?("ext/teptris_ext/engine/README.md")
+    unless Dir["ext/teptris_ext/engine/src/teptris/**/*.{c,h}"].size >= 20
+      abort "doctrine: engine source missing under ext/teptris_ext/engine for #{platform}"
+    end
+    abort "doctrine: rebuild README missing for #{platform}" unless File.exist?("ext/teptris_ext/engine/README.md")
     spec = Gem::Specification.load("teptris.gemspec").dup
     spec.platform = Gem::Platform.new(platform)
     spec.files += natives + ENGINE_SOURCE_FILES.flat_map { |g| Dir[g] }

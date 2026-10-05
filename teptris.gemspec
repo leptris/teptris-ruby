@@ -20,11 +20,11 @@ Gem::Specification.new do |spec|
       "https://leptris.github.io/docs/teptris-ruby",
     "bug_tracker_uri" =>
       "https://github.com/leptris/teptris-ruby/issues",
-    "rubygems_mfa_required" => "true",
+    "rubygems_mfa_required" => "true"
   }
   spec.required_ruby_version = ">= 3.0"
   spec.files = Dir["lib/**/*.rb"] + Dir["lib/teptris_ext.*"] +
-              Dir["sig/*.rbs"] + ["Steepfile"]
+               Dir["sig/*.rbs"] + ["Steepfile"]
   spec.bindir = "bin"
   spec.executables = []
 end

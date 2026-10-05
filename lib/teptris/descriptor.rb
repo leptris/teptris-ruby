@@ -34,11 +34,12 @@ class Teptris::Descriptor
     # rows).
     # @type var plans: Array[Hash[Symbol, untyped]]
     plans = []
-    # @type var index_of: Hash[Integer, Integer]
+    # @type var index_of: Hash[Object, Integer]
     index_of = {}
+    index_of.compare_by_identity
     collect = lambda do |t|
-      unless index_of.key?(t.object_id)
-        index_of[t.object_id] = plans.length
+      unless index_of.key?(t)
+        index_of[t] = plans.length
         plans << t
       end
       (t[:children] || []).each do |ch|
@@ -53,7 +54,7 @@ class Teptris::Descriptor
     plans.each_with_index do |t, i|
       (t[:children] || []).each_with_index do |ch, j|
         kind = KINDS.fetch(ch[:kind])
-        sub = kind == 3 ? index_of[ch[:plan].object_id] : 0
+        sub = kind == 3 ? index_of[ch[:plan]] : 0
         rows[first_row[i] + j] = [ch[:name].to_s, kind, sub]
       end
     end
