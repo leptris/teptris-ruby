@@ -20,4 +20,5 @@ raise "date" unless doc["d"] == Date.new(1979, 5, 27)
 raise "tz" unless doc["o"].utc_offset == -25_200
 raise "nested" unless doc["t"]["arr"].last["n"] == 3
 raise "round" unless Teptris::TOML.load(Teptris::TOML.dump(doc)) == doc
+
 puts "OK #{RUBY_VERSION} #{RUBY_PLATFORM} engine=#{Teptris::TOML.engine_version}"
