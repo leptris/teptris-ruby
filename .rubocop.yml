@@ -1,6 +1,7 @@
 AllCops:
   TargetRubyVersion: 3.0
   SuggestExtensions: false
+  NewCops: disable
   Exclude:
     - "pkg/**/*"
     - "tmp/**/*"
@@ -55,8 +56,6 @@ Metrics/CyclomaticComplexity:
   Max: 12
 Metrics/PerceivedComplexity:
   Max: 14
-Metrics/AbcSize:
-  Max: 40
 Metrics/ModuleLength:
   Max: 120
 Metrics/ClassLength:
