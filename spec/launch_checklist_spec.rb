@@ -1,23 +1,32 @@
+require "English"
 require_relative "spec_helper"
 
 RSpec.describe "launch checklist (leptris/teptris-ruby#3)" do
   it "defines no constants outside the Teptris namespace on require" do
     # Fresh process: requiring teptris alone must not define or rebind
     # any foreign top-level constant (the yeptris Psych lesson).
-    out = IO.popen([RbConfig.ruby, "-I#{File.expand_path('../lib', __dir__)}", "-e",
-      'require "teptris"; '       'foreign = Object.constants.grep(/Tomlib|Tomlrb|Psych/); '       'print({ teptris: Object.const_defined?(:Teptris), foreign: foreign }.inspect)'],
-      &:read)
-    expect($?.success?).to be(true)
+    prog = "require \"teptris\"; " \
+           "foreign = Object.constants.grep(/Tomlib|Tomlrb|Psych/); " \
+           "print({ teptris: Object.const_defined?(:Teptris), " \
+           "foreign: foreign }.inspect)"
+    out = IO.popen([RbConfig.ruby,
+                    "-I#{File.expand_path("../lib", __dir__)}",
+                    "-e", prog], &:read)
+    expect($CHILD_STATUS.success?).to be(true)
     # Hash#inspect spelling differs across ruby minors (3.3: {:a=>1},
     # 3.4+: {a: 1}) — parse the subprocess's own output instead
+    # the eval is the point: inspect spelling differs across ruby
+    # minors, so the subprocess's printed hash is parsed here
+    # rubocop:disable Security/Eval
     expect(eval(out)).to eq(teptris: true, foreign: [])
+    # rubocop:enable Security/Eval
   end
 
   describe "safe_load" do
     doc = "o = 1979-05-27T07:32:00Z\nl = 1979-05-27T07:32:00\nd = 1979-05-27\nt = 07:32:00\nn = 1\n"
 
     it "defaults to the native contract" do
-      expect(described_class = Teptris::TOML.safe_load(doc)["d"]).to eq(Date.new(1979, 5, 27))
+      expect(Teptris::TOML.safe_load(doc)["d"]).to eq(Date.new(1979, 5, 27))
     end
 
     it "keeps datetimes as canonical strings with datetime_policy: :string" do
@@ -59,11 +68,14 @@ RSpec.describe "launch checklist (leptris/teptris-ruby#3)" do
           { name: "name", kind: :scalar },
           { name: "hosts", kind: :collection },
           { name: "items", kind: :nested, plan: {
-              children: [{ name: "id", kind: :scalar }] } },
-        ])
+            children: [{ name: "id", kind: :scalar }]
+          } }
+        ]
+      )
       out = Teptris::TOML.load_schema(
         "name = \"svc\"\njunk = [1, 2, 3]\nhosts = [\"a\", \"b\"]\n" \
-        "[[items]]\nid = 1\n[[items]]\nid = 2\n", d)
+        "[[items]]\nid = 1\n[[items]]\nid = 2\n", d
+      )
       expect(out).to eq("name" => "svc", "hosts" => %w[a b],
                         "items" => [{ "id" => 1 }, { "id" => 2 }])
       expect(out).not_to have_key("junk")
@@ -79,11 +91,14 @@ RSpec.describe "launch checklist (leptris/teptris-ruby#3)" do
         children: [
           { name: "name", kind: :scalar },
           { name: "items", kind: :nested, plan: {
-            children: [{ name: "id", kind: :scalar }] } },
-          { name: "meta", kind: :raw },
-        ])
+            children: [{ name: "id", kind: :scalar }]
+          } },
+          { name: "meta", kind: :raw }
+        ]
+      )
       out = Teptris::TOML.load_schema(
-        "name = \"svc\"\n[[items]]\nid = 1\n[meta]\nx = \"r\"\n", d)
+        "name = \"svc\"\n[[items]]\nid = 1\n[meta]\nx = \"r\"\n", d
+      )
       expect(out["items"]).to eq([{ "id" => 1 }])
       expect(out["meta"]).to eq("x" => "r")
     end

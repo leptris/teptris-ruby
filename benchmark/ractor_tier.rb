@@ -10,7 +10,7 @@ require "timeout"
 
 corpus = ARGV[0] || File.expand_path("../../teptris/bench-corpus", __dir__)
 per_shape = (ARGV[1] || 40).to_i
-workers = (ARGV[2] || ([Ractor.count - 1, 2].max)).to_i
+workers = (ARGV[2] || [Ractor.count - 1, 2].max).to_i
 
 shapes = %w[array_heavy cargo_like datetime_heavy deep_tables mixed
             scalar_float scalar_int scalar_string table_heavy].map do |name|
@@ -43,10 +43,11 @@ def bench(label, docs, workers)
           loop do
             msg = Ractor.receive
             break if msg == :done
+
             i, src = msg
             begin
               Ractor.yield [i, Teptris::TOML.load(src)]
-            rescue => e
+            rescue StandardError => e
               Ractor.yield [i, e]
             end
           end
@@ -72,8 +73,13 @@ def bench(label, docs, workers)
           alive.delete(ready)
         end
       end
-      pool.each { |r| (r.send(:done) rescue nil) }
+      pool.each do |r|
+        r.send(:done)
+      rescue StandardError
+        nil
+      end
       raise "HUNG collected #{done}/#{docs.size}" unless done == docs.size
+
       out
     end
   end
@@ -84,17 +90,15 @@ puts format("ruby %s  ractors=%d  docs=%d  cores=%d",
             RUBY_VERSION, workers, docs.size,
             Etc.respond_to?(:nprocessors) ? Etc.nprocessors : "?")
 %w[sequential load_batch threads4 ractors].each do |label|
-  begin
-    best = Float::INFINITY
-    3.times do
-      GC.start
-      dt = bench(label, docs, workers)
-      best = dt if dt < best
-    end
-    puts format("%-12s %8.1f ms", label, best * 1000)
-  rescue Timeout::Error
-    puts format("%-12s %8s", label, "HUNG")
-  rescue RuntimeError => e
-    puts format("%-12s %8s", label, e.message[0, 40])
+  best = Float::INFINITY
+  3.times do
+    GC.start
+    dt = bench(label, docs, workers)
+    best = dt if dt < best
   end
+  puts format("%-12s %8.1f ms", label, best * 1000)
+rescue Timeout::Error
+  puts format("%-12s %8s", label, "HUNG")
+rescue RuntimeError => e
+  puts format("%-12s %8s", label, e.message[0, 40])
 end

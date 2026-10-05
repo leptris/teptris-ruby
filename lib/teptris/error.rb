@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Teptris
   class Error < StandardError; end
 

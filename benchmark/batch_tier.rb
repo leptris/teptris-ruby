@@ -17,16 +17,16 @@ $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "teptris"
 
 # shape 1: tiny — one row each (unitsml-style)
-TINY = Array.new(2000) { |i|
+TINY = Array.new(2000) do |i|
   <<~TOML
     id = #{i}
     name = "row-#{i}"
     tags = [1, 2, 3]
   TOML
-}
+end
 
 # shape 2: medium — nested tables + arrays of tables
-MED = Array.new(500) { |i|
+MED = Array.new(500) do |i|
   <<~TOML
     id = #{i}
     title = "row #{i}"
@@ -41,20 +41,20 @@ MED = Array.new(500) { |i|
     name = "second"
     age = 2
   TOML
-}
+end
 
 # shape 3: large — array-heavy, like scalar_float
-LARGE = Array.new(100) { |i|
+LARGE = Array.new(100) do |i|
   body = (1..200).map { |j| "v#{j} = #{j}.#{i}" }.join("\n")
   "[block]\n#{body}\n"
-}
+end
 
-def bench(label, &b)
+def bench(label, &block)
   reps = 6
   best = Float::INFINITY
   reps.times do
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    b.call
+    block.call
     dt = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
     best = dt if dt < best
   end
@@ -62,15 +62,16 @@ def bench(label, &b)
   best
 end
 
-[ ["tiny (2000x, 1-line each)",  TINY],
-  ["medium (500x, 8-line aot)",  MED],
-  ["large (100x, 200-line array)", LARGE] ].each do |name, corpus|
+[["tiny (2000x, 1-line each)", TINY],
+ ["medium (500x, 8-line aot)", MED],
+ ["large (100x, 200-line array)", LARGE]].each do |name, corpus|
   total_bytes = corpus.sum(&:bytesize)
-  puts "#{name}  total=#{total_bytes/1024} KB"
+  puts "#{name}  total=#{total_bytes / 1024} KB"
   per = bench("  load (per-doc)")         { corpus.each { |s| Teptris::TOML.load(s) } }
   bat = bench("  load_batch (one call)")  { Teptris::TOML.load_batch(corpus) }
   laz = bench("  load_lazy_batch (parse-only)") do
-    arr = Teptris::TOML.load_lazy_batch(corpus); arr.size
+    arr = Teptris::TOML.load_lazy_batch(corpus)
+    arr.size
   end
   printf("  eager-batch vs per-doc: %.2fx   lazy-batch vs per-doc: %.2fx\n\n",
          bat / per, laz / per)

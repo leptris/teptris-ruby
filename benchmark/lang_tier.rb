@@ -32,13 +32,11 @@ Dir[File.join(corpus, "*.toml")].sort.each do |path|
   src = File.read(path)
   row = {}
   LIBS.each do |name, call|
-    begin
-      ms = bench(call, src, reps)
-      row[name] = format("%7.2f ms %7.1f MB/s", ms,
-                         src.bytesize / 1024.0 / 1024.0 / (ms / 1000.0))
-    rescue StandardError => e
-      row[name] = "ERROR: #{e.message[0, 50]}"
-    end
+    ms = bench(call, src, reps)
+    row[name] = format("%7.2f ms %7.1f MB/s", ms,
+                       src.bytesize / 1024.0 / 1024.0 / (ms / 1000.0))
+  rescue StandardError => e
+    row[name] = "ERROR: #{e.message[0, 50]}"
   end
   puts format("%-20s teptris %s | tomlib %s | tomlrb %s",
               File.basename(path), row["teptris"], row["tomlib"], row["tomlrb"])

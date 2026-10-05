@@ -3,6 +3,7 @@
 #
 #   TEPTRIS_LIB_PATH=../teptris/build-shared/src/libteptris.dylib \
 #     ruby benchmark/pipeline.rb [corpus-file]
+require "English"
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "teptris"
 require "tomlib"
@@ -12,17 +13,18 @@ src = File.read(path)
 
 Item = Struct.new(:id, :name, :price, :tags, :available, :weight)
 
-def pipeline(hash) # nested doc -> typed objects (the consumer walk)
+# nested doc -> typed objects (the consumer walk)
+def pipeline(hash)
   hash.fetch("items", []).map do |it|
     Item.new(it["id"], it["name"], it["price"], it["tags"], it["available"],
              it.dig("meta", "weight"))
   end
 end
 
-def bench(n = 10)
+def bench(rounds = 10)
   yield # warmup
   best = nil
-  n.times do
+  rounds.times do
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     yield
     dt = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
@@ -51,12 +53,12 @@ t_alloc, items = alloc_delta { pipeline(Teptris::TOML.load(src)) }
 one_shot = []
 10.times do
   t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-  out = IO.popen([RbConfig.ruby, "-I#{File.expand_path('../lib', __dir__)}", "-e",
-    'require "teptris"; require "tomlib"; ' \
-    'src = File.read(ARGV[0]); ' \
-    'Struct.new(:id, :name).new(Teptris::TOML.load(src).size, "x")',
-    "--", path], &:read)
-  one_shot << Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0 if $?.success?
+  IO.popen([RbConfig.ruby, "-I#{File.expand_path("../lib", __dir__)}", "-e",
+            'require "teptris"; require "tomlib"; ' \
+            "src = File.read(ARGV[0]); " \
+            'Struct.new(:id, :name).new(Teptris::TOML.load(src).size, "x")',
+            "--", path], &:read)
+  one_shot << Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0 if $CHILD_STATUS.success?
 end
 one_shot.sort!
 

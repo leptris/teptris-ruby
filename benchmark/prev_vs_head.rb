@@ -62,8 +62,8 @@ end
 
 # medians of 3 rounds per metric: single short samples swing too
 # widely to gate on (the engine lane's lesson, applied here)
-def median3
-  xs = 3.times.map { yield }.sort
+def median3(&block)
+  xs = 3.times.map(&block).sort
   xs[1]
 end
 
@@ -72,7 +72,7 @@ results = {}
   "load_small" => -> { Teptris::TOML.load(SMALL) },
   "load_medium" => -> { Teptris::TOML.load(MEDIUM) },
   "load_large" => -> { Teptris::TOML.load(LARGE) },
-  "dump_medium" => -> { Teptris::TOML.dump(Teptris::TOML.load(MEDIUM)) },
+  "dump_medium" => -> { Teptris::TOML.dump(Teptris::TOML.load(MEDIUM)) }
 }.each do |name, blk|
   blk.call # warmup
   results[name] = median3 { throughput(&blk) }.round(1)

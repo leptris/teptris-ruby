@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "mkmf"
 
 # Two modes:
@@ -34,12 +36,8 @@ end
 # On Windows the .so MUST link the ruby DLL import lib — symbols do
 # not resolve at load otherwise.
 win = RUBY_PLATFORM =~ /mingw/
-unless win
-  $LIBS = $LIBS.sub("-lruby", "")
-end
-if RUBY_PLATFORM =~ /darwin/
-  $DLDFLAGS << " -Wl,-undefined,dynamic_lookup"
-end
+$LIBS = $LIBS.sub("-lruby", "") unless win
+$DLDFLAGS << " -Wl,-undefined,dynamic_lookup" if RUBY_PLATFORM =~ /darwin/
 if archive_mode
   # Link the whole archive: every teptris symbol lands inside the ext.
   $LDFLAGS << " #{archive}"
@@ -56,6 +54,6 @@ unless win
   makefile.gsub!(/^LIBRUBYARG_SHARED = .*$/, "LIBRUBYARG_SHARED =")
   makefile.gsub!(/^LIBRUBYARG_STATIC = .*$/, "LIBRUBYARG_STATIC =")
   makefile.gsub!(/^LIBRUBY = .*$/, "LIBRUBY =")
-  makefile.gsub!(/(^|\s)\S*libruby[\w.\/-]*/, "")
+  makefile.gsub!(%r{(^|\s)\S*libruby[\w./-]*}, "")
   File.write("Makefile", makefile)
 end
