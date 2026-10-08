@@ -438,7 +438,9 @@ static void build_value(teptris_builder *b, VALUE v) {
     }
 }
 
-static VALUE ext_dump(VALUE self, VALUE obj) {
+static VALUE dump_with(VALUE obj,
+                       teptris_status (*emit)(const teptris_document *,
+                                              char **, size_t *)) {
     if (!RB_TYPE_P(obj, T_HASH))
         rb_raise(rb_eArgError, "cannot dump %s (root must be a Hash)",
                  rb_obj_classname(obj));
@@ -454,7 +456,7 @@ static VALUE ext_dump(VALUE self, VALUE obj) {
     }
     char *buf = NULL;
     size_t len = 0;
-    st = teptris_document_emit(doc, &buf, &len);
+    st = emit(doc, &buf, &len);
     teptris_document_free(doc);
     teptris_builder_free(b); /* doc already transferred/freed */
     if (st != TEPTRIS_OK)
@@ -462,6 +464,17 @@ static VALUE ext_dump(VALUE self, VALUE obj) {
     VALUE out = rb_enc_str_new(buf, (long)len, rb_utf8_encoding());
     free(buf);
     return out;
+}
+
+static VALUE ext_dump(VALUE self, VALUE obj) {
+    return dump_with(obj, teptris_document_emit);
+}
+
+/* Natural JSON (engine 0.3.0): real numbers, booleans, RFC 3339
+ * datetime strings — the mappings Teptris.dump_json_natural
+ * documents. Non-finite floats become null. */
+static VALUE ext_dump_json_natural(VALUE self, VALUE obj) {
+    return dump_with(obj, teptris_document_emit_json_natural);
 }
 
 /* ------------------------------------------------- plan-walk (teptris#46) */
@@ -1213,6 +1226,8 @@ void Init_teptris_ext(void) {
     rb_define_method(cLazyValue, "to_a", lazy_to, 0);
     rb_define_method(cLazyValue, "value", lazy_to, 0);
     rb_define_module_function(m, "dump", ext_dump, 1);
+    rb_define_module_function(m, "dump_json_natural", ext_dump_json_natural,
+                              1);
     rb_define_module_function(m, "engine_version", ext_version, 0);
     rb_define_module_function(m, "plan_build", ext_plan_build, 2);
     rb_define_module_function(m, "plan_emit", ext_plan_emit, 2);
