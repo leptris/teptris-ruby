@@ -150,6 +150,13 @@ module Teptris::TOML
       TeptrisExt.dump(obj)
     end
 
+    # Natural JSON (engine 0.3.0): real numbers, booleans, RFC 3339
+    # datetime strings. Non-finite floats become null — the same
+    # documented lossy mapping as teptris.h's natural-JSON contract.
+    def dump_json_natural(obj)
+      TeptrisExt.dump_json_natural(obj)
+    end
+
     private
 
     def _validate_batch!(input, safe_load, datetime_policy, kind: :strings)

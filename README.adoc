@@ -126,6 +126,12 @@ Teptris::TOML.load("title = \"teptris\"\n[owner]\nname = \"t\"\n")
 # => {"title" => "teptris", "owner" => {"name" => "t"}}
 
 Teptris::TOML.dump({"title" => "teptris", "owner" => {"name" => "t"}})
+# Natural JSON (engine 0.3.0): real numbers/booleans, RFC 3339 datetime
+# strings, non-finite floats as null — the view hosts want, and the
+# engine's fastest emit mode.
+Teptris::TOML.dump_json_natural({"title" => "teptris", "pi" => 3.5,
+                                 "at" => Time.utc(2026, 10, 9, 12)})
+# => {"title":"teptris","pi":3.5,"at":"2026-10-09T12:00:00Z"}
 
 begin
   Teptris::TOML.load("a = [1,")
