@@ -56,5 +56,6 @@ Dir[File.join(corpus, "*.toml")].sort.each do |path|
   puts format(
     "%-20s obj~%dkB teptris %s | tomlib %s | tep-json %s | json %s",
     File.basename(path), bytes / 1024, row["teptris"], row["tomlib"],
-    row["tep-json"], row["json"])
+    row["tep-json"], row["json"]
+  )
 end
