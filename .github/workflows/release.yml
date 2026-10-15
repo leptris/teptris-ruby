@@ -26,9 +26,9 @@ jobs:
     outputs:
       sha: ${{ steps.bump.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: ruby/setup-ruby@master
+      - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
 
@@ -112,7 +112,7 @@ jobs:
     if: always() && !cancelled() && !failure()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.bump.outputs.sha || github.ref }}
 
@@ -120,11 +120,11 @@ jobs:
       - run: echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$GITHUB_ENV"
         if: runner.os == 'macOS'
 
-      - uses: ruby/setup-ruby@master
+      - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: pkg-*
           path: pkg

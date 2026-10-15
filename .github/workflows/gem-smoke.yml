@@ -33,7 +33,7 @@ jobs:
           - { os: ubuntu-latest, platform: x86_64-linux }
           - { os: macos-latest,  platform: arm64-darwin }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
@@ -79,7 +79,7 @@ jobs:
           - { os: ubuntu-latest,    platform: s390x-linux,          image: "ruby:3.4",             qemu: linux/s390x }
           - { os: ubuntu-latest,    platform: s390x-linux-musl,     image: "ruby:3.3-alpine",      qemu: linux/s390x }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Ensure binfmt handlers
         if: matrix.qemu != ''
         run: docker run --privileged --rm tonistiigi/binfmt --install arm,ppc64le,s390x
@@ -147,7 +147,7 @@ jobs:
           - { os: macos-latest,   platform: arm64-darwin,  ruby: '4.0' }
           - { os: macos-15-intel, platform: x86_64-darwin, ruby: '3.4' }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ruby/setup-ruby@v1
         with:
@@ -184,7 +184,7 @@ jobs:
           - { os: windows-11-arm,  platform: aarch64-mingw-ucrt, ruby: '3.4' }
           - { os: windows-11-arm,  platform: aarch64-mingw-ucrt, ruby: '4.0' }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ruby/setup-ruby@v1
         with:
