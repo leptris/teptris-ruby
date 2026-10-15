@@ -21,10 +21,10 @@ jobs:
   ruby-vs-tomlib-tomlrb:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # corpus generator lives in the engine repo at the pin
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: leptris/teptris
           path: libteptris-src

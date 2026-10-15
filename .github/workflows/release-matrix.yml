@@ -29,15 +29,15 @@ jobs:
     if: always() && !cancelled() && !failure()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
-      - uses: ruby/setup-ruby@master
+      - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
       - run: rake gem:source
         shell: bash
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pkg-ruby-source
           path: pkg/*.gem
@@ -69,7 +69,7 @@ jobs:
       # minors per platform, mirroring the assemble-fat table
       MINORS_DEFAULT: "3.3 3.4 4.0"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
 
@@ -89,7 +89,7 @@ jobs:
           echo "ENGINE_VER=$(grep -o 'LIBTEPTRIS_VERSION = "[^"]*"' Rakefile | cut -d'"' -f2)" >> "$GITHUB_ENV"
 
       # first minor: full engine (PGO) + ext build via rake
-      - uses: ruby/setup-ruby@master
+      - uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.first_minor || '3.3' }}
           bundler-cache: true
@@ -129,7 +129,7 @@ jobs:
           find lib/teptris -mindepth 1 -maxdepth 2 -ls
 
       # windows per-minor sequential setup (EEXIST-safe)
-      - uses: ruby/setup-ruby@master
+      - uses: ruby/setup-ruby@v1
         if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw-ucrt')
         with: { ruby-version: '3.1', bundler-cache: false }
         continue-on-error: true
@@ -139,7 +139,7 @@ jobs:
         run: |
           rake compile
           ls lib/teptris/3.1/
-      - uses: ruby/setup-ruby@master
+      - uses: ruby/setup-ruby@v1
         if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw-ucrt')
         with: { ruby-version: '3.2', bundler-cache: false }
         continue-on-error: true
@@ -149,7 +149,7 @@ jobs:
         run: |
           rake compile
           ls lib/teptris/3.2/
-      - uses: ruby/setup-ruby@master
+      - uses: ruby/setup-ruby@v1
         if: runner.os == 'Windows' && contains(matrix.platforms, 'mingw-ucrt') && (matrix.first_minor || '3.3') != '3.4'
         with: { ruby-version: '3.4', bundler-cache: false }
         continue-on-error: true
@@ -159,7 +159,7 @@ jobs:
         run: |
           rake compile
           ls lib/teptris/3.4/
-      - uses: ruby/setup-ruby@master
+      - uses: ruby/setup-ruby@v1
         if: runner.os == 'Windows' && contains(matrix.platforms, 'mingw-ucrt')
         with: { ruby-version: '4.0', bundler-cache: false }
         continue-on-error: true
@@ -169,7 +169,7 @@ jobs:
         run: |
           rake compile
           ls lib/teptris/4.0/
-      - uses: ruby/setup-ruby@master
+      - uses: ruby/setup-ruby@v1
         if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw32')
         with: { ruby-version: '3.0', bundler-cache: false }
         continue-on-error: true
@@ -190,7 +190,7 @@ jobs:
       # ucrt artifact snapshots WITHOUT 3.0 inside
       - name: Upload x64-mingw-ucrt exts
         if: contains(matrix.platforms, 'x64-mingw-ucrt')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ext-x64-mingw-ucrt
           path: lib/teptris
@@ -198,19 +198,19 @@ jobs:
       # the artifact root carries 3.0/teptris_ext.dll)
       - name: Upload x64-mingw32 exts
         if: contains(matrix.platforms, 'x64-mingw32')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ext-x64-mingw32
           path: stage-m32
       - name: Upload aarch64-mingw-ucrt exts
         if: contains(matrix.platforms, 'aarch64-mingw-ucrt')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ext-aarch64-mingw-ucrt
           path: lib/teptris
       - name: Upload unix exts (${{ matrix.platforms }})
         if: runner.os != 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ext-${{ matrix.platforms }}
           path: lib/teptris
@@ -243,11 +243,11 @@ jobs:
     env:
       MINORS_BY_PLATFORM: "x64-mingw32:3.0 x64-mingw-ucrt:3.1_3.2_3.3_3.4_4.0 aarch64-mingw-ucrt:3.4_4.0 x86_64-linux:3.3_3.4_4.0 aarch64-linux:3.3_3.4_4.0 x86_64-linux-musl:3.3_3.4_4.0 aarch64-linux-musl:3.3_3.4_4.0 arm-linux:3.3_3.4_4.0 powerpc64le-linux:3.3_3.4_4.0 s390x-linux:3.3_3.4_4.0 x86_64-darwin:3.3_3.4_4.0 arm64-darwin:3.3_3.4_4.0"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
 
-      - uses: ruby/setup-ruby@master
+      - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
           bundler-cache: true
@@ -289,7 +289,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pkg-${{ matrix.group }}
           path: pkg/*.gem
@@ -320,7 +320,7 @@ jobs:
             qemu: linux/s390x
             image_override: ruby:3.3-alpine
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
 
@@ -358,7 +358,7 @@ jobs:
 
       - name: Upload extension cells
         if: matrix.minors
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           # muslext-* namespace: assemble-fat's glibc downloads glob
           # ext-<platform>-* and an ext-x86_64-linux-musl-* name
@@ -392,7 +392,7 @@ jobs:
               bundle exec rake gem:native:"'"${TARGET_PLATFORM}"'"
             '
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ !matrix.minors }}
         with:
           name: pkg-${{ matrix.platform }}
@@ -424,7 +424,7 @@ jobs:
           # the plain tags (trixie) do
           - { platform: s390x-linux,       qemu: linux/s390x,   distro: "" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
 
@@ -449,7 +449,7 @@ jobs:
             ls -la "lib/teptris/$v/"
           done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ext-${{ matrix.platform }}
           path: |
@@ -488,11 +488,11 @@ jobs:
           # also carries the cross-variant Ruby-source parity gate
           - { os: ubuntu-latest,   kind: linux-all,    suffix: linux-all }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: pkg-*
           path: pkg
@@ -587,7 +587,7 @@ jobs:
           gem uninstall teptris -a -x --force || true
           SH
 
-      - uses: ruby/setup-ruby@master
+      - uses: ruby/setup-ruby@v1
         if: matrix.kind != 'linux-all'
         with:
           ruby-version: ${{ matrix.first_minor || '3.3' }}
@@ -599,7 +599,7 @@ jobs:
           gem=$(ls pkg/teptris-*-${{ matrix.suffix }}.gem)
           bash ./vcell.sh "$gem"
 
-      - uses: ruby/setup-ruby@master
+      - uses: ruby/setup-ruby@v1
         if: matrix.kind != 'linux-all' && matrix.kind != 'windows-arm'
         with: { ruby-version: '3.4', bundler-cache: false }
         continue-on-error: true
@@ -610,7 +610,7 @@ jobs:
           gem=$(ls pkg/teptris-*-${{ matrix.suffix }}.gem)
           bash ./vcell.sh "$gem"
 
-      - uses: ruby/setup-ruby@master
+      - uses: ruby/setup-ruby@v1
         if: matrix.kind != 'linux-all' && matrix.kind != 'windows-arm'
         with: { ruby-version: '4.0', bundler-cache: false }
         continue-on-error: true
@@ -621,7 +621,7 @@ jobs:
           gem=$(ls pkg/teptris-*-${{ matrix.suffix }}.gem)
           bash ./vcell.sh "$gem"
 
-      - uses: ruby/setup-ruby@master
+      - uses: ruby/setup-ruby@v1
         if: matrix.kind == 'windows-x64'
         with: { ruby-version: '3.0', bundler-cache: false }
         continue-on-error: true

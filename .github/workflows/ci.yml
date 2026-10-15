@@ -32,12 +32,12 @@ jobs:
           - { os: ubuntu-24.04-arm, ruby-version: '3.4' }
           - { os: windows-11-arm,   ruby-version: '4.0' }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - run: echo "MACOSX_DEPLOYMENT_TARGET=11.0" >> "$GITHUB_ENV"
         if: runner.os == 'macOS'
 
-      - uses: ruby/setup-ruby@master
+      - uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby-version }}
           bundler-cache: true
@@ -65,9 +65,9 @@ jobs:
           - { os: ubuntu-latest,    platform: x86_64-linux-musl }
           - { os: ubuntu-24.04-arm, platform: aarch64-linux-musl }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: ruby/setup-ruby@master
+      - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
 
@@ -95,8 +95,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: ruby/setup-ruby@master
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
       - name: Build + install source gem + round-trip
@@ -113,7 +113,7 @@ jobs:
     name: armv7 gems (qemu, musl + gnu)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker run --privileged --rm tonistiigi/binfmt --install arm
       - name: musl gem (alpine armv7)
         run: |
@@ -158,8 +158,8 @@ jobs:
     name: x64-mingw32 (ruby 3.0)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: ruby/setup-ruby@master
+      - uses: actions/checkout@v7
+      - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.0'
           bundler-cache: false
@@ -180,7 +180,7 @@ jobs:
     name: actionlint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker://rhysd/actionlint:latest
         with:
           args: -color
@@ -189,7 +189,7 @@ jobs:
     name: steep (RBS signatures)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.4"
@@ -200,7 +200,7 @@ jobs:
     name: rubocop
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.4"
