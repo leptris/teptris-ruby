@@ -1,5 +1,9 @@
 # teptris-ruby — TOML for Ruby at libleptris speed
 
+**Mission: be the best TOML parser and builder ever made — in C, Ruby,
+Rust, and JS — measured, not claimed.** The bar and the family ledger:
+https://github.com/leptris/teptris/blob/main/BEST-EVER.md[BEST-EVER.md].
+
 A native C-extension (no FFI, no fallback) Ruby TOML library over the
 https://github.com/leptris/teptris[libteptris] — the TOML counterpart of
 leptris-ruby (XML) and yeptris-ruby (YAML+JSON). API-shape and value
