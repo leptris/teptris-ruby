@@ -9,7 +9,7 @@
 #define FMT_FORBID_TIME 2
 #define FMT_FORBID_DATE 4
 
-static VALUE eParseError, eError, cDate;
+static VALUE eParseError, eError, cDate, cDoc;
 
 /* civil date -> days since epoch (Hinnant, inverse of the dump side) */
 static int64_t days_from_civil(int32_t y, uint8_t m, uint8_t d) {
@@ -294,6 +294,66 @@ static VALUE ext_load(int argc, VALUE *argv, VALUE self) {
     kc_free(&kc);
     xfree(cbuf);
     teptris_document_free(doc);
+    return out;
+}
+
+/* ---------------- native-doc API: the retained DOM ----------------
+ * load_doc parses into an engine document the wrapper OWNS, together
+ * with a private copy of the input - the doc's keys/values are
+ * zero-copy views into that copy, so both live and die together.
+ * dump_doc serializes with the C emitter: the roundtrip
+ * dump_doc(load_doc(s)) never materializes Ruby objects. */
+
+static void dump_check(teptris_status st);
+
+typedef struct {
+    teptris_document *doc;
+    char *buf;
+} doc_owner;
+
+static void doc_owner_free(void *p) {
+    doc_owner *o = (doc_owner *)p;
+    if (o->doc != NULL) teptris_document_free(o->doc);
+    if (o->buf != NULL) xfree(o->buf);
+    xfree(o);
+}
+static size_t doc_owner_size(const void *p) { return sizeof(doc_owner); }
+static const rb_data_type_t doc_owner_type = {
+    "TeptrisExt/Doc",
+    {0, doc_owner_free, doc_owner_size, NULL, 0},
+    NULL, NULL, RUBY_TYPED_FREE_IMMEDIATELY};
+
+static VALUE ext_load_doc(VALUE self, VALUE str) {
+    StringValue(str);
+    long len = RSTRING_LEN(str);
+    char *cbuf = ALLOC_N(char, (size_t)len + 1);
+    memcpy(cbuf, RSTRING_PTR(str), (size_t)len);
+    teptris_document *doc = NULL;
+    struct gvl_parse_arg arg = {cbuf, (size_t)len, &doc, TEPTRIS_OK};
+    rb_thread_call_without_gvl(parse_without_gvl, &arg, RUBY_UBF_IO, NULL);
+    if (arg.st != TEPTRIS_OK) {
+        const teptris_error *e = teptris_document_error(doc);
+        VALUE ex = rb_exc_new(eParseError, e->message, (long)strlen(e->message));
+        rb_iv_set(ex, "@line", SIZET2NUM(e->line));
+        rb_iv_set(ex, "@column", SIZET2NUM(e->column));
+        xfree(cbuf);
+        teptris_document_free(doc);
+        rb_exc_raise(ex);
+    }
+    doc_owner *o = ALLOC(doc_owner);
+    o->doc = doc;
+    o->buf = cbuf;
+    return TypedData_Wrap_Struct(cDoc, &doc_owner_type, o);
+}
+
+static VALUE ext_dump_doc(VALUE self, VALUE rbdoc) {
+    doc_owner *o;
+    TypedData_Get_Struct(rbdoc, doc_owner, &doc_owner_type, o);
+    char *buf = NULL;
+    size_t len = 0;
+    dump_check(teptris_document_emit(o->doc, &buf, &len));
+    VALUE out = rb_utf8_str_new(buf, (long)len);
+    free(buf);
     return out;
 }
 
@@ -1209,7 +1269,10 @@ void Init_teptris_ext(void) {
      * call state (key cache, arenas, types) is per-object or per-call */
     rb_ext_ractor_safe(true);
     VALUE m = rb_define_module("TeptrisExt");
+    cDoc = rb_define_class_under(m, "Doc", rb_cObject);
     rb_define_module_function(m, "load", ext_load, -1);
+    rb_define_module_function(m, "load_doc", ext_load_doc, 1);
+    rb_define_module_function(m, "dump_doc", ext_dump_doc, 1);
     rb_define_module_function(m, "load_lazy", ext_load_lazy, 1);
     rb_define_module_function(m, "load_batch", ext_load_batch, -1);
     rb_define_module_function(m, "load_slice", ext_load_slice, -1);

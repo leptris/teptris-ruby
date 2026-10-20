@@ -1,5 +1,5 @@
 # frozen_string_literal: true
 
 module Teptris
-  VERSION = "0.3.4.1"
+  VERSION = "0.3.6.1"
 end
