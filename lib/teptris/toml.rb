@@ -18,6 +18,24 @@ module Teptris::TOML
       TeptrisExt.load(toml)
     end
 
+    # Parse into a RETAINED engine document (an opaque TeptrisExt::Doc
+    # handle; no Ruby objects are materialized). Pair with dump_doc for
+    # a roundtrip that runs entirely at C speed - reserialization of
+    # an unchanged document skips both Ruby-object walks. The doc owns
+    # a private copy of the input: its values are views into it, so
+    # mutating the source string afterwards is invisible (and the doc
+    # keeps the copy alive).
+    def load_doc(toml)
+      raise ArgumentError, "input must be a String" unless toml.is_a?(String)
+
+      TeptrisExt.load_doc(toml)
+    end
+
+    # Emit a load_doc() document at C speed (canonical TOML).
+    def dump_doc(doc)
+      TeptrisExt.dump_doc(doc)
+    end
+
     # Safe-load shaped entry point for frameworks: permitted_classes
     # restricts datetime materialization (raise when a value would
     # materialize an unpermitted class); datetime_policy :string keeps
