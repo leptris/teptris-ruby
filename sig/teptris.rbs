@@ -22,6 +22,8 @@ module Teptris
     # Time for local datetimes, Date for dates, "HH:MM:SS" String for
     # local times.
     def self.load: (String toml) -> Hash[String, untyped]
+    def self.load_doc: (String toml) -> untyped
+    def self.dump_doc: (untyped doc) -> String
 
     def self.load_file: (String path) -> Hash[String, untyped]
 

@@ -34,8 +34,8 @@ name = "apple"
     src = nil
     GC.start
     GC.start
-    expect(Teptris::TOML.load(Teptris::TOML.dump_doc(doc))["fruit"][0]["name"])
-      .to eq("apple")
+    dumped = Teptris::TOML.dump_doc(doc)
+    expect(Teptris::TOML.load(dumped)["fruit"][0]["name"]).to eq("apple")
   end
 
   it "raises ParseError with line/column on bad input" do
