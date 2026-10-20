@@ -31,6 +31,6 @@ Dir.glob(File.join(corpus, "*.toml")).sort.each do |f|
   mn = bench(native, src, reps)
   md = bench(dict, src, reps)
   puts format("%-20s teptris native %8.2f ms %6.1f MB/s | tomlib dict %8.2f ms %6.1f MB/s",
-              File.basename(f), mn, src.size / 1048576.0 / (mn / 1000.0),
-              md, src.size / 1048576.0 / (md / 1000.0))
+              File.basename(f), mn, src.size / 1_048_576.0 / (mn / 1000.0),
+              md, src.size / 1_048_576.0 / (md / 1000.0))
 end
