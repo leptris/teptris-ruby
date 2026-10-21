@@ -51,10 +51,6 @@ module Teptris
 
     def self.dump: (untyped obj) -> String
 
-  def self.load_doc: (String toml) -> untyped
-
-  def self.dump_doc: (untyped doc) -> String
-
     def self.dump_json_natural: (untyped obj) -> String
 
     def self.engine_version: () -> String
