@@ -1270,6 +1270,9 @@ void Init_teptris_ext(void) {
     rb_ext_ractor_safe(true);
     VALUE m = rb_define_module("TeptrisExt");
     cDoc = rb_define_class_under(m, "Doc", rb_cObject);
+    /* opaque handle: no Ruby-side allocation (silences the
+     * allocator-undefine warning on reload) */
+    rb_undef_alloc_func(cDoc);
     rb_define_module_function(m, "load", ext_load, -1);
     rb_define_module_function(m, "load_doc", ext_load_doc, 1);
     rb_define_module_function(m, "dump_doc", ext_dump_doc, 1);
