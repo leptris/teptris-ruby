@@ -31,7 +31,6 @@ name = "apple"
 
   it "keeps the doc alive across GC (values are views into its input)" do
     doc = Teptris::TOML.load_doc(src)
-    src = nil
     GC.start
     GC.start
     dumped = Teptris::TOML.dump_doc(doc)
@@ -39,12 +38,15 @@ name = "apple"
   end
 
   it "raises ParseError with line/column on bad input" do
-    expect {
+    raised = nil
+    begin
       Teptris::TOML.load_doc("a = ")
-    }.to raise_error(Teptris::ParseError) do |e|
-      expect(e.instance_variable_get(:@line)).to eq(1)
-      expect(e.instance_variable_get(:@column)).to eq(5)
+    rescue Teptris::ParseError => e
+      raised = e
     end
+    expect(raised).to be_a(Teptris::ParseError)
+    expect(raised.line).to eq(1)
+    expect(raised.column).to eq(5)
   end
 
   it "rejects non-string input" do
