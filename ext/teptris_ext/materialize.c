@@ -449,7 +449,22 @@ static void dump_scalar(teptris_builder *b, const char *key, size_t klen,
         }
         { static const char m[] = "DBG3 not-Date\n"; write(2, m, sizeof m - 1); }
         { static const char m[] = "DBG4 classname-done\n"; write(2, m, sizeof m - 1); }
-        rb_raise(eError, "cannot dump %s", rb_class2name(rb_obj_class(v)));
+        {
+            char b[96];
+            int t = (int)TYPE(eError);
+            int n = snprintf(b, sizeof b, "DBG5 eError type=%d\n", t);
+            write(2, b, (size_t)n);
+            if (t == T_CLASS) {
+                n = snprintf(b, sizeof b, "DBG6 eError name=%s\n",
+                             rb_class2name(eError));
+                write(2, b, (size_t)n);
+            }
+        }
+        VALUE probe = rb_obj_alloc(eError);
+        { static const char m[] = "DBG7 alloc-ok\n"; write(2, m, sizeof m - 1); }
+        rb_funcall(probe, rb_intern("initialize"), 1, rb_str_new_cstr("probe"));
+        { static const char m[] = "DBG8 init-ok\n"; write(2, m, sizeof m - 1); }
+        rb_exc_raise(rb_exc_new3(eError, rb_str_new_cstr("cannot dump probe")));
     }
 }
 

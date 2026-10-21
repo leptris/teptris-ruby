@@ -48,7 +48,7 @@ jobs:
           if ! command -v ninja >/dev/null 2>&1 && command -v choco >/dev/null 2>&1; then
             choco install -y ninja
           fi
-          rake compile
+          TEPTRIS_PGO=0 rake compile
           bundle exec rspec --format progress
 
   # The musl flavor the release ships (alpine container): validates the
