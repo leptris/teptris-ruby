@@ -10,6 +10,14 @@
 #define FMT_FORBID_DATE 4
 
 static VALUE eParseError, eError, cDate, cDoc;
+/* rb_raise's varargs formatting segfaults in its format dispatch on
+ * windows x64-mingw-ucrt ruby 4.0 (diag #158/#160: the identical raise
+ * crashes across PGO on/off while direct exception construction runs
+ * clean, and every rb_exc_new site has always been fine) — build the
+ * message with snprintf and raise via rb_exc_new. */
+static void raise_teptris(const char *msg) {
+    rb_exc_raise(rb_exc_new(eError, msg, (long)strlen(msg)));
+}
 
 /* civil date -> days since epoch (Hinnant, inverse of the dump side) */
 static int64_t days_from_civil(int32_t y, uint8_t m, uint8_t d) {
@@ -223,14 +231,14 @@ static VALUE obj_from_node(const teptris_node *n, unsigned flags,
         if (flags & FMT_STRING_DATES) return dt_string(&d, kind);
         if (kind == TEPTRIS_DATETIME_OFFSET || kind == TEPTRIS_DATETIME_LOCAL) {
             if (flags & FMT_FORBID_TIME)
-                rb_raise(eError, "value materializes Time, which is not in "
-                                 "permitted_classes (use datetime_policy: :string)");
+                raise_teptris("value materializes Time, which is not in "
+                          "permitted_classes (use datetime_policy: :string)");
             return time_from_dt(&d, kind == TEPTRIS_DATETIME_OFFSET);
         }
         if (kind == TEPTRIS_DATE_LOCAL) {
             if (flags & FMT_FORBID_DATE)
-                rb_raise(eError, "value materializes Date, which is not in "
-                                 "permitted_classes (use datetime_policy: :string)");
+                raise_teptris("value materializes Date, which is not in "
+                          "permitted_classes (use datetime_policy: :string)");
             return rb_funcall(cDate, rb_intern("new"), 3,
                               INT2FIX(d.year), INT2FIX(d.month), INT2FIX(d.day));
         }
@@ -365,11 +373,15 @@ static VALUE ext_version(VALUE self) {
 
 static ID id_utc_offset, id_to_s, id_to_i, id_nsec;
 
+
 static void dump_check(teptris_status st) {
     if (st == TEPTRIS_OK) return;
     if (st == TEPTRIS_ERR_ALLOC)
-        rb_raise(eError, "out of memory while dumping");
-    rb_raise(eError, "cannot dump value (%s)", teptris_status_string(st));
+        raise_teptris("out of memory while dumping");
+    char msg[128];
+    snprintf(msg, sizeof msg, "cannot dump value (%s)",
+             teptris_status_string(st));
+    raise_teptris(msg);
 }
 
 /* days since 1970-01-01 -> proleptic-Gregorian y/m/d (Hinnant) */
@@ -444,7 +456,9 @@ static void dump_scalar(teptris_builder *b, const char *key, size_t klen,
                                                     TEPTRIS_DATE_LOCAL, &dt));
             return;
         }
-        rb_raise(eError, "cannot dump %s", rb_obj_classname(v));
+        char msg[192];
+        snprintf(msg, sizeof msg, "cannot dump %s", rb_obj_classname(v));
+        raise_teptris(msg);
     }
 }
 
@@ -506,21 +520,28 @@ static VALUE dump_with(VALUE obj,
                  rb_obj_classname(obj));
     teptris_builder *b = teptris_builder_new();
     if (b == NULL)
-        rb_raise(eError, "out of memory while dumping");
+        raise_teptris("out of memory while dumping");
     rb_hash_foreach(obj, table_each, (VALUE)b);
     teptris_document *doc = NULL;
     teptris_status st = teptris_builder_finish(b, &doc);
     if (st != TEPTRIS_OK) {
         teptris_builder_free(b);
-        rb_raise(eError, "cannot dump (%s)", teptris_status_string(st));
+        char msg[128];
+        snprintf(msg, sizeof msg, "cannot dump (%s)",
+                 teptris_status_string(st));
+        raise_teptris(msg);
     }
     char *buf = NULL;
     size_t len = 0;
     st = emit(doc, &buf, &len);
     teptris_document_free(doc);
     teptris_builder_free(b); /* doc already transferred/freed */
-    if (st != TEPTRIS_OK)
-        rb_raise(eError, "dump failed (%s)", teptris_status_string(st));
+    if (st != TEPTRIS_OK) {
+        char msg[128];
+        snprintf(msg, sizeof msg, "dump failed (%s)",
+                 teptris_status_string(st));
+        raise_teptris(msg);
+    }
     VALUE out = rb_enc_str_new(buf, (long)len, rb_utf8_encoding());
     free(buf);
     return out;
@@ -734,7 +755,7 @@ static VALUE ext_plan_build(VALUE self, VALUE rows, VALUE first_row)
     long nrows = RARRAY_LEN(rows);
     long nplans = RARRAY_LEN(first_row) - 1;
     if (nplans < 1 || nrows < 1) {
-        rb_raise(eError, "plan needs >= 1 plan and >= 1 row");
+        raise_teptris("plan needs >= 1 plan and >= 1 row");
     }
     teptris_plan_row *crows = calloc((size_t)nrows, sizeof(*crows));
     /* bytes-vs-count: this must be (nplans+1) * sizeof(uint32_t) — the
@@ -744,7 +765,7 @@ static VALUE ext_plan_build(VALUE self, VALUE rows, VALUE first_row)
     if (crows == NULL || cfirst == NULL) {
         free(crows);
         free(cfirst);
-        rb_raise(eError, "out of memory building plan");
+        raise_teptris("out of memory building plan");
     }
     for (long i = 0; i < nrows; i++) {
         VALUE row = rb_ary_entry(rows, i);
@@ -765,7 +786,9 @@ static VALUE ext_plan_build(VALUE self, VALUE rows, VALUE first_row)
     free(crows);
     free(cfirst);
     if (plan == NULL) {
-        rb_raise(eError, "invalid plan spec (status %d)", (int)st);
+        char msg[96];
+        snprintf(msg, sizeof msg, "invalid plan spec (status %d)", (int)st);
+        raise_teptris(msg);
     }
     return TypedData_Wrap_Struct(rb_cObject, &plan_type, plan);
 }
@@ -790,7 +813,9 @@ static VALUE ext_plan_emit(VALUE self, VALUE rb_plan, VALUE toml)
         teptris_plan_walk(plan, teptris_document_root(doc), &st);
     if (res == NULL) {
         teptris_document_free(doc);
-        rb_raise(eError, "plan walk failed (status %d)", (int)st);
+        char msg[96];
+        snprintf(msg, sizeof msg, "plan walk failed (status %d)", (int)st);
+        raise_teptris(msg);
     }
     VALUE out = asm_rows(plan, res, 0);
     teptris_plan_result_free(res);
@@ -926,7 +951,7 @@ static VALUE lazy_each(VALUE self) {
         break;
     }
     default:
-        rb_raise(eError, "scalar node has nothing to iterate");
+        raise_teptris("scalar node has nothing to iterate");
     }
     return self;
 }
@@ -957,7 +982,7 @@ static VALUE lazy_get(VALUE self, VALUE key) {
         break;
     }
     default:
-        rb_raise(eError, "scalar node is not subscriptable");
+        raise_teptris("scalar node is not subscriptable");
     }
     if (child == NULL) return Qnil;
     return lazy_wrap(v->owner, child);
@@ -1071,7 +1096,12 @@ static VALUE ext_load_lazy_batch(VALUE self, VALUE strings) {
     long n = RARRAY_LEN(strings);
     if (n == 0) return rb_ary_new();
     batch_scratch *s = batch_scratch_alloc(n);
-    if (s == NULL) rb_raise(eError, "out of memory batching %ld documents", n);
+    if (s == NULL) {
+        char msg[96];
+        snprintf(msg, sizeof msg,
+                 "out of memory batching %ld documents", n);
+        raise_teptris(msg);
+    }
     /* the batch parse is pure C: pin every input (one tmp lock per
      * string - repeated objects dup; frozen strings cannot take the
      * lock, yet compaction can move them) and release the GVL for the
@@ -1223,7 +1253,12 @@ static VALUE ext_load_batch(int argc, VALUE *argv, VALUE self) {
     if (n == 0) return rb_ary_new();
     unsigned flags = flags_from_opts(opts);
     batch_scratch *s = batch_scratch_alloc(n);
-    if (s == NULL) rb_raise(eError, "out of memory batching %ld documents", n);
+    if (s == NULL) {
+        char msg[96];
+        snprintf(msg, sizeof msg,
+                 "out of memory batching %ld documents", n);
+        raise_teptris(msg);
+    }
     for (long i = 0; i < n; i++) {
         VALUE str = rb_ary_entry(strings, i);
         StringValue(str);
@@ -1235,7 +1270,10 @@ static VALUE ext_load_batch(int argc, VALUE *argv, VALUE self) {
                             s->docs, s->statuses);
     if (batch != TEPTRIS_OK) {
         batch_scratch_free(s);
-        rb_raise(eError, "batch parse failed (status %d)", (int)batch);
+        char msg[96];
+        snprintf(msg, sizeof msg, "batch parse failed (status %d)",
+                 (int)batch);
+        raise_teptris(msg);
     }
     long first_fail = -1;
     for (long i = 0; i < n; i++) {
