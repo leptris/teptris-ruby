@@ -61,7 +61,7 @@ jobs:
           fi
           if [ "${{ matrix.os }}/${{ matrix.ruby-version }}" = "windows-latest/4.0" ]; then
             TEPTRIS_PGO=0 rake compile
-            for f in launch_checklist_spec native_doc_spec ractor_spec toml_batch_spec toml_batch_threads_spec toml_dump_golden_spec toml_dump_json_natural_spec; do
+            for f in launch_checklist native_doc ractor toml_batch toml_batch_threads toml_dump_golden toml_dump_json_natural; do
               if bundle exec rspec --format progress spec/${f}_spec.rb spec/toml_dump_stream_spec.rb > /tmp/pair.log 2>&1; then
                 echo "PAIR $f: PASS"
               else
