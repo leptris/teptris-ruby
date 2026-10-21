@@ -61,6 +61,14 @@ jobs:
           fi
           if [ "${{ matrix.os }}/${{ matrix.ruby-version }}" = "windows-latest/4.0" ]; then
             TEPTRIS_PGO=0 rake compile
+            for i in 1 2 3 4 5; do
+              if bundle exec rspec --format progress spec/toml_dump_stream_spec.rb > /tmp/iso$i.log 2>&1; then
+                echo "ISO$i: PASS"
+              else
+                echo "ISO$i: FAIL rc=$?"
+                tail -5 /tmp/iso$i.log || true
+              fi
+            done
           else
             rake compile
           fi
