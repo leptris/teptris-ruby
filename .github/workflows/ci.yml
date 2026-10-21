@@ -44,22 +44,26 @@ jobs:
 
       - name: Compile (two-stage PGO) + specs
         shell: bash
-        env:
-          # windows x64-mingw-ucrt + ruby 4.0: the two-stage PGO build
-          # miscompiles dump_scalar's raise path (diag PR #158: with
-          # TEPTRIS_PGO=0 the identical code allocs, initializes and
-          # raises cleanly; the stage-2 -Wmissing-profile wall with
-          # mangled D~\a .gcda paths shows the mingw PGO flow feeding
-          # -fprofile-use garbage). Not a library bug — leave PGO off
-          # for this one cell until the toolchain flow is fixed.
-          TEPTRIS_PGO: >-
-            ${{ matrix.os == 'windows-latest' &&
-                matrix.ruby-version == '4.0' && '0' || '1' }}
+        # windows x64-mingw-ucrt + ruby 4.0: the two-stage PGO build
+        # miscompiles dump_scalar's raise path (diag PR #158: with
+        # TEPTRIS_PGO=0 the identical code allocs, initializes and
+        # raises cleanly; the stage-2 -Wmissing-profile wall with
+        # mangled D~\a .gcda paths shows the mingw PGO flow feeding
+        # -fprofile-use garbage). Not a library bug — leave PGO off
+        # for this one cell until the toolchain flow is fixed. The
+        # decision is a shell conditional, NOT an env expression:
+        # GHA coerces an expression result of '0' to the string
+        # "false", which the Rakefile's != "0" check silently treats
+        # as PGO-on (burned one CI round).
         run: |
           if ! command -v ninja >/dev/null 2>&1 && command -v choco >/dev/null 2>&1; then
             choco install -y ninja
           fi
-          rake compile
+          if [ "${{ matrix.os }}/${{ matrix.ruby-version }}" = "windows-latest/4.0" ]; then
+            TEPTRIS_PGO=0 rake compile
+          else
+            rake compile
+          fi
           bundle exec rspec --format progress
 
   # The musl flavor the release ships (alpine container): validates the
