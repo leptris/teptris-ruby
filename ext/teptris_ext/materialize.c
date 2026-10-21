@@ -3,6 +3,7 @@
 #include <ruby/encoding.h>
 #include "teptris/teptris.h"
 #include "teptris/plan.h"
+#include <unistd.h>
 
 /* flags: bit0 = datetimes as strings, bit1 = forbid Time, bit2 = forbid Date */
 #define FMT_STRING_DATES 1
@@ -427,6 +428,7 @@ static void dump_scalar(teptris_builder *b, const char *key, size_t klen,
         dump_check(teptris_builder_put_float(b, key, klen, RFLOAT_VALUE(v)));
         return;
     default:
+        { static const char m[] = "DBG1 default-branch\n"; write(2, m, sizeof m - 1); }
         if (rb_obj_is_kind_of(v, rb_cTime)) {
             teptris_datetime dt = {0};
             fill_dt_from_time(v, &dt);
@@ -434,6 +436,7 @@ static void dump_scalar(teptris_builder *b, const char *key, size_t klen,
                 b, key, klen, TEPTRIS_DATETIME_OFFSET, &dt));
             return;
         }
+        { static const char m[] = "DBG2 not-Time\n"; write(2, m, sizeof m - 1); }
         if (rb_obj_is_kind_of(v, cDate)) {
             /* DateTime is a Date subclass: dumps its date part, as the
              * Ruby-era dump writers did. One crossing: jd -> civil. */
@@ -444,7 +447,9 @@ static void dump_scalar(teptris_builder *b, const char *key, size_t klen,
                                                     TEPTRIS_DATE_LOCAL, &dt));
             return;
         }
-        rb_raise(eError, "cannot dump %s", rb_obj_classname(v));
+        { static const char m[] = "DBG3 not-Date\n"; write(2, m, sizeof m - 1); }
+        { static const char m[] = "DBG4 classname-done\n"; write(2, m, sizeof m - 1); }
+        rb_raise(eError, "cannot dump %s", rb_class2name(rb_obj_class(v)));
     }
 }
 
