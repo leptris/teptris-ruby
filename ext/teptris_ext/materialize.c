@@ -1345,4 +1345,17 @@ void Init_teptris_ext(void) {
     id_to_s = rb_intern("to_s");
     id_to_i = rb_intern("to_i");
     id_nsec = rb_intern("nsec");
+    /* Compaction safety: class objects stay reachable through their
+     * constants (never swept), but GC.compact MOVES them — an
+     * unregistered static slot then holds a stale RVALUE and the next
+     * rb_raise/rb_funcall through it faults (the windows ruby-4.0
+     * segfault, teptris-ruby#161: the suite's GC.compact spec moved
+     * Teptris::Error out from under these slots). rb_gc_register_address
+     * roots the SLOT, so compaction updates what it points at. */
+    rb_gc_register_address(&eError);
+    rb_gc_register_address(&eParseError);
+    rb_gc_register_address(&cDate);
+    rb_gc_register_address(&cDoc);
+    rb_gc_register_address(&cLazyOwner);
+    rb_gc_register_address(&cLazyValue);
 }
