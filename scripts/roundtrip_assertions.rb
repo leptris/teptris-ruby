@@ -21,4 +21,15 @@ raise "tz" unless doc["o"].utc_offset == -25_200
 raise "nested" unless doc["t"]["arr"].last["n"] == 3
 raise "round" unless Teptris::TOML.load(Teptris::TOML.dump(doc)) == doc
 
+# the error path: dumping an unsupported value raises Teptris::Error
+# (rb_raise over the binding's own class). A broken ext binary crashes
+# the process HERE instead of raising — the mingw-ucrt ruby-4.0 PGO
+# miscompile shipped in 0.3.6.1 slipped through a smoke without this.
+begin
+  Teptris::TOML.dump("k" => Object.new)
+  raise "err-path: dump of an unsupported value did not raise"
+rescue Teptris::Error
+  raise "err-path: wrong error class" unless $!.message.include?("cannot dump")
+end
+
 puts "OK #{RUBY_VERSION} #{RUBY_PLATFORM} engine=#{Teptris::TOML.engine_version}"

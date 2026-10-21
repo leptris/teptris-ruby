@@ -166,8 +166,11 @@ jobs:
       - name: win ext 4.0
         if: runner.os == 'Windows' && contains(matrix.platforms, 'mingw-ucrt')
         shell: bash
+        # TEPTRIS_PGO=0: the mingw-ucrt ruby-4.0 two-stage PGO build
+        # miscompiles dump_scalar's raise path (diag PR #158 — un-
+        # instrumented builds raise cleanly). Same cell fix as ci.yml.
         run: |
-          rake compile
+          TEPTRIS_PGO=0 rake compile
           ls lib/teptris/4.0/
       - uses: ruby/setup-ruby@v1
         if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw32')
