@@ -444,7 +444,19 @@ static void dump_scalar(teptris_builder *b, const char *key, size_t klen,
                                                     TEPTRIS_DATE_LOCAL, &dt));
             return;
         }
-        rb_raise(eError, "cannot dump %s", rb_obj_classname(v));
+        {
+            const char *cname = rb_class2name(rb_obj_class(v));
+            char b[96];
+            int n;
+            n = snprintf(b, sizeof b, "D1 calling rb_vsprintf cname=%s\n",
+                         cname);
+            write(2, b, (size_t)n);
+            VALUE m = rb_vsprintf("cannot dump %s", cname);
+            n = snprintf(b, sizeof b, "D2 vsprintf-ok len=%d\n",
+                         (int)RSTRING_LEN(m));
+            write(2, b, (size_t)n);
+            rb_raise(eError, "literal");
+        }
     }
 }
 
