@@ -1,5 +1,7 @@
 # teptris-ruby — TOML for Ruby at libleptris speed
 
+image:https://github.com/leptris/teptris-ruby/actions/workflows/ci.yml/badge.svg[ci]
+
 **Mission: be the best TOML parser and builder ever made — in C, Ruby,
 Rust, and JS — measured, not claimed.** The bar and the family ledger:
 https://github.com/leptris/teptris/blob/main/BEST-EVER.md[BEST-EVER.md].
