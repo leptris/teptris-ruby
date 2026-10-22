@@ -10,7 +10,15 @@ permissions:
 
 jobs:
   bench:
+    # 3.4 = the recorded-dead-end control (segfaulting yield(move:),
+    # wedging copy-transfer, sequential-fastest); 4.0 = the recheck
+    # cell - the ledger's explicit "recheck when CRuby stabilizes".
+    name: ractor tier (ruby ${{ matrix.ruby-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby-version: ['3.4', '4.0']
     steps:
       - uses: actions/checkout@v7
       - name: Checkout libteptris (bench corpus)
@@ -20,7 +28,7 @@ jobs:
           path: libteptris-src
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.4'
+          ruby-version: ${{ matrix.ruby-version }}
       - run: command -v ninja >/dev/null 2>&1 || sudo apt-get install -y ninja-build
       - run: rake compile
       - name: Generate the bench corpus
