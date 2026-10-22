@@ -34,49 +34,88 @@ def bench(label, docs, workers)
     # cache per slice, zero-copy thread passing
     Teptris::TOML.load_batch(docs.map(&:last), threads: 4)
   when "ractors"
-    # dead workers must not wedge the collector: tagged yields,
-    # sentinel shutdown, ClosedError tolerance, and a hard timeout
-    # that reports HUNG as a verdict instead of hanging the lane
+    # dead workers must not wedge the collector: tagged results,
+    # sentinel shutdown, closed-port tolerance, and a hard timeout
+    # that reports HUNG as a verdict instead of hanging the lane.
+    # Ruby 4.0 removed Ractor.yield/take/receive - workers talk
+    # through Ractor::Port there; 3.4 keeps the yield/take pool.
     Timeout.timeout(120) do
-      pool = Array.new(workers) do
-        Ractor.new do
-          loop do
-            msg = Ractor.receive
-            break if msg == :done
+      if Ractor.const_defined?(:Port)
+        outp = Ractor::Port.new
+        inp = Array.new(workers) { Ractor::Port.new }
+        pool = inp.map do |ip|
+          Ractor.new(ip, outp) do |my_in, my_out|
+            loop do
+              msg = my_in.receive
+              break if msg == :done
 
-            i, src = msg
-            begin
-              Ractor.yield [i, Teptris::TOML.load(src)]
-            rescue StandardError => e
-              Ractor.yield [i, e]
+              i, src = msg
+              begin
+                my_out << [i, Teptris::TOML.load(src)]
+              rescue StandardError => e
+                my_out << [i, e]
+              end
+            end
+          rescue Ractor::PortClosed
+            nil
+          end
+        end
+        out = Array.new(docs.size)
+        docs.each_with_index do |(_, src), i|
+          inp[i % workers] << [i, src]
+        end
+        done = 0
+        while done < docs.size
+          i, v = outp.receive
+          out[i] = v
+          done += 1
+        end
+        inp.each do |ip|
+          ip << :done
+        rescue StandardError
+          nil
+        end
+      else
+        pool = Array.new(workers) do
+          Ractor.new do
+            loop do
+              msg = Ractor.receive
+              break if msg == :done
+
+              i, src = msg
+              begin
+                Ractor.yield [i, Teptris::TOML.load(src)]
+              rescue StandardError => e
+                Ractor.yield [i, e]
+              end
             end
           end
         end
-      end
-      out = Array.new(docs.size)
-      docs.each_with_index do |(_, src), i|
-        pool[i % workers].send([i, src])
-      end
-      done = 0
-      alive = pool.dup
-      while done < docs.size && !alive.empty?
-        ready, = begin
-          Ractor.select(*alive)
-        rescue Ractor::ClosedError
-          break
+        out = Array.new(docs.size)
+        docs.each_with_index do |(_, src), i|
+          pool[i % workers].send([i, src])
         end
-        begin
-          i, v = ready.take
-          out[i] = v
-          done += 1
-        rescue Ractor::ClosedError
-          alive.delete(ready)
+        done = 0
+        alive = pool.dup
+        while done < docs.size && !alive.empty?
+          ready, = begin
+            Ractor.select(*alive)
+          rescue Ractor::ClosedError
+            break
+          end
+          begin
+            i, v = ready.take
+            out[i] = v
+            done += 1
+          rescue Ractor::ClosedError
+            alive.delete(ready)
+          end
         end
-      end
-      pool.each do |r|
-        r.send(:done)
-      rescue StandardError
-        nil
+        pool.each do |r|
+          r.send(:done)
+        rescue StandardError
+          nil
+        end
       end
       raise "HUNG collected #{done}/#{docs.size}" unless done == docs.size
 
