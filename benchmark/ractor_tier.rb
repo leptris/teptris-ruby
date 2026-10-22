@@ -66,8 +66,12 @@ def bench(label, docs, workers)
         end
         done = 0
         while done < docs.size
-          i, v = outp.receive
-          out[i] = v
+          # oi/ov, NOT i/v: the names would become Timeout-scope locals
+          # here and poison the 3.4 else-branch worker block's own
+          # `i, src = msg`, which then captures them (Ractor isolation
+          # violation: 'can not isolate a Proc (i)').
+          oi, ov = outp.receive
+          out[oi] = ov
           done += 1
         end
         inp.each do |ip|
