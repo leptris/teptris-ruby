@@ -41,10 +41,14 @@ def bench(label, docs, workers)
     # through Ractor::Port there; 3.4 keeps the yield/take pool.
     Timeout.timeout(120) do
       if Ractor.const_defined?(:Port)
+        dbg = ENV["TEPTRIS_RACTOR_DEBUG"]
+        trace = ->(phase) { warn(format("[dbg] %s %s", phase, Time.now.strftime("%S.%L"))) if dbg }
         outp = Ractor::Port.new
         inp = Array.new(workers) { Ractor::Port.new }
+        trace.call("ports created")
         pool = inp.map do |ip|
           Ractor.new(ip, outp) do |my_in, my_out|
+            warn("[dbg] worker up") if ENV["TEPTRIS_RACTOR_DEBUG"]
             loop do
               msg = my_in.receive
               break if msg == :done
@@ -53,17 +57,21 @@ def bench(label, docs, workers)
               begin
                 my_out << [i, Teptris::TOML.load(src)]
               rescue StandardError => e
+                warn("[dbg] worker load failed: \#{e.class}") if ENV["TEPTRIS_RACTOR_DEBUG"]
                 my_out << [i, e]
               end
             end
+            warn("[dbg] worker done") if ENV["TEPTRIS_RACTOR_DEBUG"]
           rescue Ractor::PortClosed
-            nil
+            warn("[dbg] worker saw PortClosed") if ENV["TEPTRIS_RACTOR_DEBUG"]
           end
         end
+        trace.call("workers \#{workers} up")
         out = Array.new(docs.size)
         docs.each_with_index do |(_, src), i|
           inp[i % workers] << [i, src]
         end
+        trace.call("docs sent: \#{docs.size}")
         done = 0
         while done < docs.size
           # oi/ov, NOT i/v: the names would become Timeout-scope locals
@@ -73,7 +81,9 @@ def bench(label, docs, workers)
           oi, ov = outp.receive
           out[oi] = ov
           done += 1
+          warn("[dbg] received \#{done}/\#{docs.size} (doc \#{oi} \#{ov.class})") if dbg && (done % 40).zero?
         end
+        trace.call("all received")
         inp.each do |ip|
           ip << :done
         rescue StandardError
