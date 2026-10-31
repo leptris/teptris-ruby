@@ -1132,10 +1132,13 @@ static VALUE ext_load_lazy_batch(VALUE self, VALUE strings) {
     }
     if (first_fail != -1) {
         const teptris_error *e = teptris_document_error(s->docs[first_fail]);
-        VALUE ex =
-            rb_exc_new(eParseError, e->message, (long)strlen(e->message));
+        char msg[192];
+        snprintf(msg, sizeof msg, "document %ld: %s", first_fail,
+                 e->message);
+        VALUE ex = rb_exc_new(eParseError, msg, (long)strlen(msg));
         rb_iv_set(ex, "@line", SIZET2NUM(e->line));
         rb_iv_set(ex, "@column", SIZET2NUM(e->column));
+        rb_iv_set(ex, "@index", LONG2NUM(first_fail));
         for (long i = 0; i < n; i++) teptris_document_free(s->docs[i]);
         batch_scratch_free(s);
         rb_exc_raise(ex);
@@ -1281,10 +1284,13 @@ static VALUE ext_load_batch(int argc, VALUE *argv, VALUE self) {
     }
     if (first_fail != -1) {
         const teptris_error *e = teptris_document_error(s->docs[first_fail]);
-        VALUE ex =
-            rb_exc_new(eParseError, e->message, (long)strlen(e->message));
+        char msg[192];
+        snprintf(msg, sizeof msg, "document %ld: %s", first_fail,
+                 e->message);
+        VALUE ex = rb_exc_new(eParseError, msg, (long)strlen(msg));
         rb_iv_set(ex, "@line", SIZET2NUM(e->line));
         rb_iv_set(ex, "@column", SIZET2NUM(e->column));
+        rb_iv_set(ex, "@index", LONG2NUM(first_fail));
         for (long i = 0; i < n; i++) teptris_document_free(s->docs[i]);
         batch_scratch_free(s);
         rb_exc_raise(ex);

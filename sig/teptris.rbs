@@ -10,6 +10,9 @@ module Teptris
   class ParseError < Error
     attr_reader line: Integer
     attr_reader column: Integer
+    # batch context: set by load_batch/load_slice on batch failures -
+    # the 0-based position of the failing document in the batch
+    attr_accessor index: Integer?
 
     def initialize: (String message, ?Integer line, ?Integer column) -> void
   end
