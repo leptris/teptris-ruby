@@ -60,8 +60,6 @@ module Teptris
 
     def self.engine_version: () -> String
 
-  def self.edit: (String source, String key_path, String replacement) -> String
-
     # Format-preserving edit: rewrite exactly the value bytes of one
     # key = value line; every other byte of the source survives.
     def self.edit: (String source, String key_path, String replacement) -> String
@@ -144,6 +142,8 @@ module TeptrisExt
   def self.dump_json_natural: (untyped obj) -> String
 
   def self.engine_version: () -> String
+
+  def self.edit: (String source, String key_path, String replacement) -> String
 
   def self.plan_build: (Array[[String, Integer, Integer]] rows,
                         Array[Integer] first_row) -> untyped
