@@ -1227,10 +1227,12 @@ static VALUE ext_load_slice(int argc, VALUE *argv, VALUE self) {
         }
         const teptris_error *e = teptris_document_error(docs[i]);
         if (stats[i] != TEPTRIS_OK) {
-            VALUE ex = rb_exc_new(eParseError, e->message,
-                                  (long)strlen(e->message));
+            char msg[192];
+            snprintf(msg, sizeof msg, "document %ld: %s", i, e->message);
+            VALUE ex = rb_exc_new(eParseError, msg, (long)strlen(msg));
             rb_iv_set(ex, "@line", SIZET2NUM(e->line));
             rb_iv_set(ex, "@column", SIZET2NUM(e->column));
+            rb_iv_set(ex, "@index", LONG2NUM(i));
             long j;
             for (j = i; j < n; j++) teptris_document_free(docs[j]);
             kc_free(&kc);

@@ -121,15 +121,20 @@ module Teptris::TOML
           end
         end
       end.each(&:join)
-      if first_error
-        base, err = first_error
-        # the slice's own error carries a slice-local @index once the C
-        # batch raise sets it; translate to a batch-global index
-        slice_idx = err.instance_variable_get(:@index) || 0
-        err.instance_variable_set(:@index, base + slice_idx)
-        raise err
-      end
+      raise_batch_error!(first_error) if first_error
       results
+    end
+
+    # the slice's error is slice-local (its message and @index count
+    # from the slice's first document); translate both to batch-global
+    def raise_batch_error!(first_error)
+      base, err = first_error
+      global = base + (err.index || 0)
+      text = err.message.sub(/\Adocument \d+: /, "")
+      wrapped = Teptris::ParseError.new("document #{global}: #{text}",
+                                        err.line, err.column)
+      wrapped.index = global
+      raise wrapped
     end
 
     # Lazy twin of load_batch: parse N inputs eagerly, hand back an
