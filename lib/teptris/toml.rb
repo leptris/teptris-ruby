@@ -122,7 +122,11 @@ module Teptris::TOML
         end
       end.each(&:join)
       if first_error
-        _, err = first_error
+        base, err = first_error
+        # the slice's own error carries a slice-local @index once the C
+        # batch raise sets it; translate to a batch-global index
+        slice_idx = err.instance_variable_get(:@index) || 0
+        err.instance_variable_set(:@index, base + slice_idx)
         raise err
       end
       results

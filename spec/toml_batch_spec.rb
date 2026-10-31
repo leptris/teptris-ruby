@@ -119,3 +119,27 @@ RSpec.describe Teptris::TOML do
     end
   end
 end
+
+describe "batch error index" do
+  it "names the failing document" do
+    docs = ["a = 1", "b = 2", "b = @", "c = 3"]
+    begin
+      Teptris::TOML.load_batch(docs)
+      raise "expected a raise"
+    rescue Teptris::ParseError => e
+      expect(e.message).to include("document 2")
+      expect(e.index).to eq(2)
+    end
+  end
+
+  it "threads path translates slice-local index to batch-global" do
+    docs = Array.new(20) { |i| "k#{i} = #{i}" }
+    docs[17] = "bad = @"
+    begin
+      Teptris::TOML.load_batch(docs, threads: 4)
+      raise "expected a raise"
+    rescue Teptris::ParseError => e
+      expect(e.index).to eq(17)
+    end
+  end
+end
