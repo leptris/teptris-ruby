@@ -173,6 +173,17 @@ module Teptris::TOML
       TeptrisExt.engine_version
     end
 
+    # Format-preserving edit: rewrite exactly the value bytes of one
+    # key = value line; every other byte of the source survives
+    # (comments, blank lines, formatting, CRLF endings). key_path may
+    # carry a [table] prefix ("t.x" edits x inside [t]); replacement
+    # is the value's TEXT, validated by the engine. Returns the edited
+    # document as a String. Raises Teptris::Error on an absent key or
+    # a malformed span/replacement.
+    def edit(source, key_path, replacement)
+      TeptrisExt.edit(source, key_path, replacement)
+    end
+
     def load_file(path)
       load(File.read(path))
     end
