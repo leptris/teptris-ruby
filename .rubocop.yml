@@ -57,9 +57,9 @@ Metrics/CyclomaticComplexity:
 Metrics/PerceivedComplexity:
   Max: 14
 Metrics/ModuleLength:
-  Max: 125
+  Max: 130
 Metrics/ClassLength:
-  Max: 125
+  Max: 130
 Metrics/AbcSize:
   Max: 50
 
