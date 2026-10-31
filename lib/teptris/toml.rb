@@ -128,8 +128,12 @@ module Teptris::TOML
     # the slice's error is slice-local (its message and @index count
     # from the slice's first document); translate both to batch-global
     def raise_batch_error!(first_error)
+      return unless first_error
+
       base, err = first_error
-      global = base + (err.index || 0)
+      return unless err
+
+      global = (base || 0) + (err.index || 0)
       text = err.message.sub(/\Adocument \d+: /, "")
       wrapped = Teptris::ParseError.new("document #{global}: #{text}",
                                         err.line, err.column)
