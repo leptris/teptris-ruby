@@ -369,6 +369,35 @@ static VALUE ext_version(VALUE self) {
     return rb_str_new_cstr(teptris_version_string());
 }
 
+/* ------------------------------------------------------------- edit */
+
+/* Format-preserving edit: rewrite exactly the value bytes of one
+ * key = value line; every other byte of the source survives. Returns
+ * the edited document as a String. Teptris::Error on an absent key or
+ * a malformed span/replacement. */
+static VALUE ext_edit(VALUE self, VALUE src, VALUE keypath, VALUE replacement) {
+    StringValue(src);
+    StringValue(keypath);
+    StringValue(replacement);
+    char *buf = NULL;
+    size_t out_len = 0;
+    teptris_status st = teptris_edit_scalar(
+        RSTRING_PTR(src), (size_t)RSTRING_LEN(src),
+        StringValueCStr(keypath), StringValueCStr(replacement),
+        &buf, &out_len);
+    if (st != TEPTRIS_OK) {
+        if (st == TEPTRIS_ERR_STATE)
+            raise_teptris("edit: key not found");
+        else if (st == TEPTRIS_ERR_ALLOC)
+            rb_memerror();
+        else
+            raise_teptris("edit: malformed key path or replacement");
+    }
+    VALUE out = rb_str_new(buf, (long)out_len);
+    free(buf);
+    return out;
+}
+
 /* ------------------------------------------------------------------ dump */
 
 static ID id_utc_offset, id_to_s, id_to_i, id_nsec;
@@ -1341,6 +1370,7 @@ void Init_teptris_ext(void) {
     rb_define_module_function(m, "dump_json_natural", ext_dump_json_natural,
                               1);
     rb_define_module_function(m, "engine_version", ext_version, 0);
+    rb_define_module_function(m, "edit", ext_edit, 3);
     rb_define_module_function(m, "plan_build", ext_plan_build, 2);
     rb_define_module_function(m, "plan_emit", ext_plan_emit, 2);
     /* error/version load first (teptris.rb), then the ext bundle */
