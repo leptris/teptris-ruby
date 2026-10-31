@@ -60,6 +60,12 @@ module Teptris
 
     def self.engine_version: () -> String
 
+  def self.edit: (String source, String key_path, String replacement) -> String
+
+    # Format-preserving edit: rewrite exactly the value bytes of one
+    # key = value line; every other byte of the source survives.
+    def self.edit: (String source, String key_path, String replacement) -> String
+
     def self._validate_batch!: (untyped input, untyped safe_load,
                                 :native | :string datetime_policy,
                                 ?kind: Symbol) -> void
