@@ -30,3 +30,21 @@ RSpec.describe Teptris::TOML do
     end
   end
 end
+
+RSpec.describe Teptris::TOML do
+  describe ".edit (engine v0.3.17: dotted lines under a section)" do
+    it "finds a dotted key line that continues the open section" do
+      src = "[[items]]\na.b = 1\n\n[[items]]\nname = \"y\"\n"
+      expect(described_class.edit(src, "items.a.b", "2")).to eq(
+        "[[items]]\na.b = 2\n\n[[items]]\nname = \"y\"\n"
+      )
+    end
+
+    it "edits the FIRST element when headers repeat" do
+      src = "[[items]]\nname = \"x\"\n\n[[items]]\nname = \"y\"\n"
+      expect(described_class.edit(src, "items.name", "\"z\"")).to eq(
+        "[[items]]\nname = \"z\"\n\n[[items]]\nname = \"y\"\n"
+      )
+    end
+  end
+end
