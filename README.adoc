@@ -145,6 +145,16 @@ rescue Teptris::ParseError => e
   e.line   # 1
   e.column # 8
 end
+
+# Format-preserving edit (engine 0.3.16+): rewrites exactly the value
+# bytes of one key = value line; comments, blank lines, formatting and
+# CRLF endings survive. Dotted paths address the key (a [table] prefix
+# matches the open section); multiline strings and inline collections
+# splice (parse-verified). Raises Teptris::Error on an absent key or a
+# malformed span/replacement.
+Teptris::TOML.edit("# conf\n[serve]\nport = 8080  # keep\n",
+                   "serve.port", "9090")
+# => "# conf\n[serve]\nport = 9090  # keep\n"
 ----
 
 === Descriptor plan path (lutaml-model recipe)
