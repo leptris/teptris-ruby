@@ -9,7 +9,7 @@
 #define FMT_FORBID_TIME 2
 #define FMT_FORBID_DATE 4
 
-static VALUE eParseError, eError, cDate, cDoc;
+static VALUE eParseError, eError, cDate, cDoc, gregorian_start;
 /* rb_raise's varargs formatting segfaults in its format dispatch on
  * windows x64-mingw-ucrt ruby 4.0 (diag #158/#160: the identical raise
  * crashes across PGO on/off while direct exception construction runs
@@ -239,8 +239,9 @@ static VALUE obj_from_node(const teptris_node *n, unsigned flags,
             if (flags & FMT_FORBID_DATE)
                 raise_teptris("value materializes Date, which is not in "
                           "permitted_classes (use datetime_policy: :string)");
-            return rb_funcall(cDate, rb_intern("new"), 3,
-                              INT2FIX(d.year), INT2FIX(d.month), INT2FIX(d.day));
+            return rb_funcall(cDate, rb_intern("new"), 4,
+                              INT2FIX(d.year), INT2FIX(d.month),
+                              INT2FIX(d.day), gregorian_start);
         }
         return dt_string(&d, kind); /* local time: canonical string */
     }}
@@ -477,10 +478,16 @@ static void dump_scalar(teptris_builder *b, const char *key, size_t klen,
         }
         if (rb_obj_is_kind_of(v, cDate)) {
             /* DateTime is a Date subclass: dumps its date part, as the
-             * Ruby-era dump writers did. One crossing: jd -> civil. */
+             * Ruby-era dump writers did. The civil fields come
+             * DIRECTLY off the Date: Date#jd is interpreted with the
+             * date's calendar reform (default ITALY), so the old
+             * jd -> civil crossing shifted pre-1582 dates by the
+             * reform offset (0001-01-01 roundtripped as 0000-12-30).
+             * year/month/day are exact under every reform. */
             teptris_datetime dt = {0};
-            int64_t jd = NUM2LL(rb_funcall(v, rb_intern("jd"), 0));
-            civil_from_days(jd - 2440588, &dt.year, &dt.month, &dt.day);
+            dt.year = (int32_t)NUM2LL(rb_funcall(v, rb_intern("year"), 0));
+            dt.month = (uint8_t)NUM2LL(rb_funcall(v, rb_intern("month"), 0));
+            dt.day = (uint8_t)NUM2LL(rb_funcall(v, rb_intern("day"), 0));
             dump_check(teptris_builder_put_datetime(b, key, klen,
                                                     TEPTRIS_DATE_LOCAL, &dt));
             return;
@@ -651,9 +658,9 @@ static VALUE asm_rows(const teptris_plan *p, const teptris_plan_result *res,
                 break;
             case TEPTRIS_DATE_LOCAL:
                 if (teptris_plan_result_datetime_at(res, i, &d) == TEPTRIS_OK) {
-                    val = rb_funcall(cDate, rb_intern("new"), 3,
+                    val = rb_funcall(cDate, rb_intern("new"), 4,
                                      INT2FIX(d.year), INT2FIX(d.month),
-                                     INT2FIX(d.day));
+                                     INT2FIX(d.day), gregorian_start);
                 }
                 break;
             case TEPTRIS_TIME_LOCAL:
@@ -722,10 +729,10 @@ static VALUE asm_rows(const teptris_plan *p, const teptris_plan_result *res,
                                 val,
                                 teptris_plan_result_array_value_kind_at(
                                     res, i, j) == TEPTRIS_DATE_LOCAL
-                                    ? rb_funcall(cDate, rb_intern("new"), 3,
+                                    ? rb_funcall(cDate, rb_intern("new"), 4,
                                                  INT2FIX(d.year),
                                                  INT2FIX(d.month),
-                                                 INT2FIX(d.day))
+                                                 INT2FIX(d.day), gregorian_start)
                                     : dt_string(&d, TEPTRIS_TIME_LOCAL));
                         }
                         break;
@@ -1379,6 +1386,7 @@ void Init_teptris_ext(void) {
     eParseError = rb_const_get(t, rb_intern("ParseError"));
     rb_funcall(rb_mKernel, rb_intern("require"), 1, rb_str_new_cstr("date"));
     cDate = rb_const_get(rb_cObject, rb_intern("Date"));
+    gregorian_start = rb_const_get(cDate, rb_intern("GREGORIAN"));
     id_utc_offset = rb_intern("utc_offset");
     id_to_s = rb_intern("to_s");
     id_to_i = rb_intern("to_i");
