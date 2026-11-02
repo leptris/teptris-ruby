@@ -43,12 +43,12 @@ RSpec.describe Teptris::Schema do
     end
 
     it "raises Teptris::Error with the engine diag on unsupported constructs" do
-      expect {
+      expect do
         described_class.compile('{"unevaluatedProperties":false}')
-      }.to raise_error(Teptris::Error, /unevaluatedProperties/)
-      expect {
+      end.to raise_error(Teptris::Error, /unevaluatedProperties/)
+      expect do
         described_class.compile('{"$ref":"https://x.example/s.json"}')
-      }.to raise_error(Teptris::Error, /remote/)
+      end.to raise_error(Teptris::Error, /remote/)
     end
 
     it "raises on broken JSON" do
