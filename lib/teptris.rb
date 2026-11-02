@@ -6,6 +6,7 @@ require_relative "teptris/version"
 require_relative "teptris/error"
 require_relative "teptris/descriptor"
 require_relative "teptris/toml"
+require_relative "teptris/schema"
 
 # Fat-gem layout on EVERY platform (nokogiri's shape): one extension
 # per ruby minor under lib/teptris/<minor>/ — ucrt rubies bind a

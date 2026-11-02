@@ -157,6 +157,25 @@ Teptris::TOML.edit("# conf\n[serve]\nport = 8080  # keep\n",
 # => "# conf\n[serve]\nport = 9090  # keep\n"
 ----
 
+=== Schema validation (engine 0.3.20+)
+
+Compile a JSON Schema once (the 2020-12 practical subset; the four
+TOML/JSON policies are engine contract —
+`SCHEMAS.md` in libteptris), validate many.
+
+[source,ruby]
+----
+schema = Teptris::Schema.compile('{"properties":{"port":{"type":"integer"}}}')
+schema.validate("port = \"x\"\n")
+# => [{path: "port", schema_path: "#/properties.port",
+#       message: "expected a matching type, found string"}]
+schema.valid?("port = 8080\n") # => true
+----
+
+Compile failures raise `Teptris::Error` with the engine's diag
+(unsupported constructs are named, never silently ignored); documents
+that do not parse raise `Teptris::ParseError` with `line`/`column`.
+
 === Descriptor plan path (lutaml-model recipe)
 
 Compile a plan once, materialize only the planned keys in one native

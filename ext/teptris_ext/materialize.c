@@ -1,6 +1,7 @@
 #include <ruby.h>
 #include <ruby/thread.h>
 #include <ruby/encoding.h>
+#include "teptris/schema.h"
 #include "teptris/teptris.h"
 #include "teptris/plan.h"
 
@@ -9,7 +10,7 @@
 #define FMT_FORBID_TIME 2
 #define FMT_FORBID_DATE 4
 
-static VALUE eParseError, eError, cDate, cDoc, gregorian_start;
+static VALUE eParseError, eError, cDate, cDoc, cSchema, gregorian_start;
 /* rb_raise's varargs formatting segfaults in its format dispatch on
  * windows x64-mingw-ucrt ruby 4.0 (diag #158/#160: the identical raise
  * crashes across PGO on/off while direct exception construction runs
@@ -1346,6 +1347,9 @@ static VALUE ext_load_batch(int argc, VALUE *argv, VALUE self) {
     return out;
 }
 
+static VALUE ext_schema_compile(VALUE self, VALUE str);
+static VALUE ext_schema_validate(VALUE self, VALUE rsch, VALUE str);
+
 void Init_teptris_ext(void) {
     /* every module static is written once here and read-only after;
      * call state (key cache, arenas, types) is per-object or per-call */
@@ -1362,6 +1366,10 @@ void Init_teptris_ext(void) {
     rb_define_module_function(m, "load_batch", ext_load_batch, -1);
     rb_define_module_function(m, "load_slice", ext_load_slice, -1);
     rb_define_module_function(m, "load_lazy_batch", ext_load_lazy_batch, 1);
+    cSchema = rb_define_class_under(m, "Schema", rb_cObject);
+    rb_undef_alloc_func(cSchema);
+    rb_define_module_function(m, "schema_compile", ext_schema_compile, 1);
+    rb_define_module_function(m, "schema_validate", ext_schema_validate, 2);
     cLazyOwner = rb_define_class_under(m, "LazyOwner", rb_cObject);
     cLazyValue = rb_define_class_under(m, "LazyValue", rb_cObject);
     rb_define_method(cLazyValue, "kind", lazy_kind, 0);
@@ -1404,4 +1412,82 @@ void Init_teptris_ext(void) {
     rb_gc_register_address(&cDoc);
     rb_gc_register_address(&cLazyOwner);
     rb_gc_register_address(&cLazyValue);
+}
+
+/* ---------------- schema validation (engine 0.3.20) ----------------
+ * compile once, validate many: the compiled schema is an immutable,
+ * arena-backed handle wrapped as TypedData (freed by GC). validate
+ * parses via the same parse step as load (so ParseError carries
+ * line/column) and hands back the engine's JSON array string
+ * ("[]" = valid); the Ruby wrapper decodes it. */
+
+typedef struct {
+    teptris_schema *sch;
+} schema_owner;
+
+static void schema_owner_free(void *p) {
+    schema_owner *o = (schema_owner *)p;
+    if (o->sch != NULL) teptris_schema_free(o->sch);
+    xfree(o);
+}
+static size_t schema_owner_size(const void *p) { return sizeof(schema_owner); }
+static const rb_data_type_t schema_owner_type = {
+    "TeptrisExt/Schema",
+    {0, schema_owner_free, schema_owner_size, NULL, 0},
+    NULL, NULL, RUBY_TYPED_FREE_IMMEDIATELY};
+
+static VALUE ext_schema_compile(VALUE self, VALUE str) {
+    StringValue(str);
+    long len = RSTRING_LEN(str);
+    char *cbuf = ALLOC_N(char, (size_t)len + 1);
+    memcpy(cbuf, RSTRING_PTR(str), (size_t)len);
+    teptris_schema *sch = NULL;
+    char *diag = NULL;
+    size_t diag_len = 0;
+    teptris_status st =
+        teptris_schema_compile(cbuf, (size_t)len, &sch, &diag, &diag_len);
+    xfree(cbuf);
+    if (st != TEPTRIS_OK || sch == NULL) {
+        VALUE msg = diag != NULL ? rb_str_new(diag, (long)diag_len)
+                                 : rb_str_new_cstr("invalid schema");
+        teptris_diag_free(diag);
+        if (sch != NULL) teptris_schema_free(sch);
+        rb_raise(eError, "schema rejected: %s", StringValueCStr(msg));
+    }
+    schema_owner *o;
+    VALUE obj = TypedData_Make_Struct(cSchema, schema_owner,
+                                      &schema_owner_type, o);
+    o->sch = sch;
+    return obj;
+}
+
+static VALUE ext_schema_validate(VALUE self, VALUE rsch, VALUE str) {
+    schema_owner *o;
+    TypedData_Get_Struct(rsch, schema_owner, &schema_owner_type, o);
+    StringValue(str);
+    long len = RSTRING_LEN(str);
+    char *cbuf = ALLOC_N(char, (size_t)len + 1);
+    memcpy(cbuf, RSTRING_PTR(str), (size_t)len);
+    teptris_document *doc = NULL;
+    struct gvl_parse_arg arg = {cbuf, (size_t)len, &doc, TEPTRIS_OK};
+    rb_thread_call_without_gvl(parse_without_gvl, &arg, RUBY_UBF_IO, NULL);
+    if (arg.st != TEPTRIS_OK) {
+        const teptris_error *e = teptris_document_error(doc);
+        VALUE ex = rb_exc_new(eParseError, e->message, (long)strlen(e->message));
+        rb_iv_set(ex, "@line", SIZET2NUM(e->line));
+        rb_iv_set(ex, "@column", SIZET2NUM(e->column));
+        xfree(cbuf);
+        teptris_document_free(doc);
+        rb_exc_raise(ex);
+    }
+    char *buf = NULL;
+    size_t out_len = 0;
+    teptris_status st =
+        teptris_schema_validate_doc(o->sch, doc, &buf, &out_len);
+    teptris_document_free(doc);
+    xfree(cbuf);
+    dump_check(st);
+    VALUE out = rb_str_new(buf, (long)out_len);
+    free(buf);
+    return out;
 }
