@@ -1,6 +1,7 @@
 target :lib do
   signature "sig"
   library "date"
+  library "json"
 
   check "lib"
 

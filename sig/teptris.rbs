@@ -17,6 +17,28 @@ module Teptris
     def initialize: (String message, ?Integer line, ?Integer column) -> void
   end
 
+  # A compiled JSON Schema (the 2020-12 practical subset). Compile
+  # once, validate many: Violation carries the materialized TOML
+  # path, the schema path, and the message.
+  class Schema
+    class Violation
+      attr_reader path: String
+      attr_reader schema_path: String
+      attr_reader message: String
+
+      def initialize: (String path, String schema_path, String message) -> void
+
+      def to_h: () -> { path: String, schema_path: String, message: String }
+    end
+
+    def self.compile: (String schema_json) -> Schema
+
+    def initialize: (untyped handle) -> void
+    def validate: (String toml) -> Array[Violation]
+    def valid?: (String toml) -> bool
+    def inspect: () -> String
+  end
+
   module TOML
     VERSION: String
 
@@ -149,4 +171,14 @@ module TeptrisExt
                         Array[Integer] first_row) -> untyped
 
   def self.plan_emit: (untyped handle, String toml) -> Hash[String, untyped]
+
+  # schema validation (engine 0.3.20): the compiled schema is an
+  # opaque TypedData handle freed by GC
+  def self.schema_compile: (String schema_json) -> TeptrisExt::Schema
+
+  def self.schema_validate: (TeptrisExt::Schema schema, String toml) -> String
+
+  class Schema
+    # opaque; owns the native handle
+  end
 end
