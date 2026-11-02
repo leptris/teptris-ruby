@@ -147,7 +147,7 @@ RSpec.describe "pre-reform dates (audit 16)" do
   # through a jd -> proleptic-Gregorian crossing and shifted
   # pre-1582 dates by the reform offset.
   it "roundtrips dates before the Gregorian reform exactly" do
-    ["0001-01-01", "0400-02-29", "1500-03-01", "1582-10-05"].each do |d|
+    %w[0001-01-01 0400-02-29 1500-03-01 1582-10-05].each do |d|
       src = "a = #{d}\n"
       expect(Teptris::TOML.dump(Teptris::TOML.load(src))).to eq(src)
     end
