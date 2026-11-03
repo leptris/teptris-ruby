@@ -209,3 +209,24 @@ describe "the SOTA surface (engine 0.3.22)" do
     expect(local.valid?("k = '07:32:00Z'\n")).to be(false)
   end
 end
+
+describe "vendored metaschemas (engine 0.3.23)" do
+  it "resolves the official metaschema in memory" do
+    schema = Teptris::Schema.compile(
+      '{"$ref":"https://json-schema.org/draft/2020-12/schema"}'
+    )
+    expect(schema.validate('type = "string"' + "\n")).to be_empty
+    expect(schema.validate("type = 123\n").length).to eq(1)
+  end
+
+  it "takes the legacy draft-07 empty-fragment URL" do
+    schema = Teptris::Schema.compile(
+      '{"$ref":"http://json-schema.org/draft-07/schema#"}'
+    )
+    expect(schema.validate('description = "d"' + "\n")).to be_empty
+  end
+
+  it "reports the engine version" do
+    expect(Teptris::TOML.engine_version).to eq("0.3.23")
+  end
+end
