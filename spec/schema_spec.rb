@@ -193,7 +193,7 @@ describe "the SOTA surface (engine 0.3.22)" do
   it "asserts contentSchema against the decoded content" do
     content = Teptris::Schema.compile(
       '{"properties":{"k":{"contentEncoding":"base64",' \
-      '"contentMediaType":"application/json",'       '"contentSchema":{"type":"object","required":["n"]}}}}'
+      '"contentMediaType":"application/json",' + '"contentSchema":{"type":"object","required":["n"]}}}}'
     )
     expect(content.valid?("k = 'eyJuIjogMX0='\n")).to be(true)
     expect(content.valid?("k = 'W10='\n")).to be(false)
