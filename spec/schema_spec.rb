@@ -143,24 +143,24 @@ RSpec.describe "the taplo parity surface (engine 0.3.21)" do
 
   it "reads tuple items and additionalItems" do
     tuple = Teptris::Schema.compile(
-      '{"items":[{"type":"string"}],"additionalItems":false}'
+      '{"properties":{"t":{"items":[{"type":"string"}],"additionalItems":false}}}'
     )
     expect(tuple.valid?("t = ['x']\n")).to be(true)
     expect(tuple.validate("t = ['x', 1]\n").length).to eq(1)
   end
 
   it "keeps multipleOf exact across decimals" do
-    mult = Teptris::Schema.compile('{"multipleOf":0.1}')
+    mult = Teptris::Schema.compile('{"properties":{"k":{"multipleOf":0.1}}}')
     expect(mult.valid?("k = 0.3\n")).to be(true)
     expect(mult.valid?("k = 0.35\n")).to be(false)
   end
 
   it "enforces the formats taplo cannot" do
-    uuid = Teptris::Schema.compile('{"format":"uuid"}')
+    uuid = Teptris::Schema.compile('{"properties":{"k":{"format":"uuid"}}}')
     expect(uuid.valid?("k = '123e4567-e89b-12d3-a456-426614174000'\n"))
       .to be(true)
     expect(uuid.valid?("k = 'nope'\n")).to be(false)
-    req = Teptris::Schema.compile('{"format":"semver-requirement"}')
+    req = Teptris::Schema.compile('{"properties":{"k":{"format":"semver-requirement"}}}')
     expect(req.valid?("k = '^1.2'\n")).to be(true)
     expect(req.valid?("k = 'not a req'\n")).to be(false)
   end
