@@ -217,7 +217,7 @@ describe "vendored metaschemas (engine 0.3.23)" do
     schema = Teptris::Schema.compile(
       '{"$ref":"https://json-schema.org/draft/2020-12/schema"}'
     )
-    expect(schema.validate('type = "string"' + "\n")).to be_empty
+    expect(schema.validate("type = \"string\"\n")).to be_empty
     expect(schema.validate("type = 123\n").length).to eq(1)
   end
 
@@ -225,7 +225,7 @@ describe "vendored metaschemas (engine 0.3.23)" do
     schema = Teptris::Schema.compile(
       '{"$ref":"http://json-schema.org/draft-07/schema#"}'
     )
-    expect(schema.validate('description = "d"' + "\n")).to be_empty
+    expect(schema.validate("description = \"d\"\n")).to be_empty
   end
 
   it "reports the engine version" do
