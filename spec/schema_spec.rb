@@ -61,7 +61,9 @@ RSpec.describe Teptris::Schema do
     it "keeps integer TOML-native (enum is type-strict)" do
       schema = described_class.compile('{"properties":{"k":{"enum":[1]}}}')
       expect(schema.valid?("k = 1\n")).to be(true)
-      expect(schema.valid?("k = 1.0\n")).to be(false)
+      # 2020-12 numeric identity since engine 0.3.23
+      expect(schema.valid?("k = 1.0\n")).to be(true)
+      expect(schema.valid?("k = 1.5\n")).to be(false)
     end
 
     it "validates datetimes as strings with formats" do
