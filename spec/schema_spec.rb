@@ -43,9 +43,9 @@ RSpec.describe Teptris::Schema do
     end
 
     it "raises Teptris::Error with the engine diag on unsupported constructs" do
-      expect do
-        described_class.compile('{"unevaluatedProperties":false}')
-      end.to raise_error(Teptris::Error, /unevaluatedProperties/)
+      # unevaluatedProperties is enforced since engine 0.3.22
+      schema = described_class.compile('{"unevaluatedProperties":false}')
+      expect(schema.validate("a = 1\n").length).to eq(1)
       expect do
         described_class.compile('{"$ref":"https://x.example/s.json"}')
       end.to raise_error(Teptris::Error, /remote/)
@@ -163,5 +163,47 @@ RSpec.describe "the taplo parity surface (engine 0.3.21)" do
     req = Teptris::Schema.compile('{"properties":{"k":{"format":"semver-requirement"}}}')
     expect(req.valid?("k = '^1.2'\n")).to be(true)
     expect(req.valid?("k = 'not a req'\n")).to be(false)
+  end
+end
+
+describe "the SOTA surface (engine 0.3.22)" do
+  it "enforces unevaluatedProperties with the cousin rule" do
+    cousin = Teptris::Schema.compile(
+      '{"allOf":[{"properties":{"a":{}}},{"unevaluatedProperties":false}]}'
+    )
+    expect(cousin.validate("a = 1\n").length).to eq(1)
+
+    adjacent = Teptris::Schema.compile(
+      '{"properties":{"a":{}},"unevaluatedProperties":false}'
+    )
+    expect(adjacent.valid?("a = 1\n")).to be(true)
+    expect(adjacent.valid?("a = 1\nb = 2\n")).to be(false)
+  end
+
+  it "resolves dynamic refs to the innermost anchor" do
+    tree = Teptris::Schema.compile(
+      '{"$dynamicAnchor":"node","type":"object","properties":' \
+      '{"value":{"type":"integer"},"children":{"type":"array",' \
+      '"items":{"$dynamicRef":"#node"}}}}'
+    )
+    expect(tree.valid?("value = 1\n[[children]]\nvalue = 2\n")).to be(true)
+    expect(tree.valid?("value = 1\n[[children]]\nvalue = 'x'\n")).to be(false)
+  end
+
+  it "asserts contentSchema against the decoded content" do
+    content = Teptris::Schema.compile(
+      '{"properties":{"k":{"contentEncoding":"base64",' \
+      '"contentMediaType":"application/json",'       '"contentSchema":{"type":"object","required":["n"]}}}}'
+    )
+    expect(content.valid?("k = 'eyJuIjogMX0='\n")).to be(true)
+    expect(content.valid?("k = 'W10='\n")).to be(false)
+  end
+
+  it "satisfies the TOML-native local formats by kind" do
+    local = Teptris::Schema.compile(
+      '{"properties":{"k":{"format":"time-local"}}}'
+    )
+    expect(local.valid?("07:32:00\n")).to be(true)
+    expect(local.valid?("'07:32:00Z'\n")).to be(false)
   end
 end
