@@ -125,3 +125,43 @@ RSpec.describe Teptris::Schema do
     end
   end
 end
+
+RSpec.describe "the taplo parity surface (engine 0.3.21)" do
+  subject(:compile) { ->(json) { Teptris::Schema.compile(json) } }
+  it "enforces draft-07 dependencies in both forms" do
+    deps = Teptris::Schema.compile(
+      '{"dependencies":{"credit_card":["billing_address"]}}'
+    )
+    expect(deps.validate("a = 1\ncredit_card = 1\n").length).to eq(1)
+    expect(deps.valid?("credit_card = 1\nbilling_address = 'x'\n")).to be(true)
+
+    schema_form = Teptris::Schema.compile(
+      '{"dependencies":{"credit_card":{"required":["billing_address"]}}}'
+    )
+    expect(schema_form.validate("credit_card = 1\n").length).to eq(1)
+  end
+
+  it "reads tuple items and additionalItems" do
+    tuple = Teptris::Schema.compile(
+      '{"items":[{"type":"string"}],"additionalItems":false}'
+    )
+    expect(tuple.valid?("t = ['x']\n")).to be(true)
+    expect(tuple.validate("t = ['x', 1]\n").length).to eq(1)
+  end
+
+  it "keeps multipleOf exact across decimals" do
+    mult = Teptris::Schema.compile('{"multipleOf":0.1}')
+    expect(mult.valid?("k = 0.3\n")).to be(true)
+    expect(mult.valid?("k = 0.35\n")).to be(false)
+  end
+
+  it "enforces the formats taplo cannot" do
+    uuid = Teptris::Schema.compile('{"format":"uuid"}')
+    expect(uuid.valid?("k = '123e4567-e89b-12d3-a456-426614174000'\n"))
+      .to be(true)
+    expect(uuid.valid?("k = 'nope'\n")).to be(false)
+    req = Teptris::Schema.compile('{"format":"semver-requirement"}')
+    expect(req.valid?("k = '^1.2'\n")).to be(true)
+    expect(req.valid?("k = 'not a req'\n")).to be(false)
+  end
+end
