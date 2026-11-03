@@ -203,7 +203,7 @@ describe "the SOTA surface (engine 0.3.22)" do
     local = Teptris::Schema.compile(
       '{"properties":{"k":{"format":"time-local"}}}'
     )
-    expect(local.valid?("07:32:00\n")).to be(true)
-    expect(local.valid?("'07:32:00Z'\n")).to be(false)
+    expect(local.valid?("k = 07:32:00\n")).to be(true)
+    expect(local.valid?("k = '07:32:00Z'\n")).to be(false)
   end
 end
