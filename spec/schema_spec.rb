@@ -229,13 +229,13 @@ describe "vendored metaschemas (engine 0.3.23)" do
   end
 
   it "reports the engine version" do
-    expect(Teptris::TOML.engine_version).to eq("0.3.23")
+    expect(Teptris::TOML.engine_version).to eq("0.3.24")
   end
 end
 
   describe "unicode property escapes (engine 0.3.24)" do
     it "matches letters across scripts" do
-      schema = described_class.compile(
+      schema = Teptris::Schema.compile(
         '{"properties":{"k":{"pattern":"^\\\\p{Letter}+$"}}}'
       )
       expect(schema.validate("k = \"π\"\n")).to be_empty
@@ -243,7 +243,7 @@ end
     end
 
     it "negates with \\P" do
-      schema = described_class.compile(
+      schema = Teptris::Schema.compile(
         '{"properties":{"k":{"pattern":"^\\\\P{Letter}+$"}}}'
       )
       expect(schema.validate("k = '123'\n")).to be_empty
