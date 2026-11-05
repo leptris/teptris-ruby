@@ -229,7 +229,24 @@ describe "vendored metaschemas (engine 0.3.23)" do
   end
 
   it "reports the engine version" do
-    expect(Teptris::TOML.engine_version).to eq("0.3.24")
+    expect(Teptris::TOML.engine_version).to eq("0.3.25")
+  end
+end
+
+describe "dialect-gated formats (engine 0.3.25)" do
+  it "annotates under a declared dialect, asserts without" do
+    plain = Teptris::Schema.compile('{"properties":{"k":{"format":"email"}}}')
+    expect(plain.validate("k = '2962'\n").length).to eq(1)
+    anno = Teptris::Schema.compile(
+      '{"$schema":"https://json-schema.org/draft/2020-12/schema",' \
+      '"properties":{"k":{"format":"email"}}}'
+    )
+    expect(anno.validate("k = '2962'\n")).to be_empty
+    assertion = Teptris::Schema.compile(
+      '{"$schema":"https://json-schema.org/draft/2020-12/format-assertion",' \
+      '"properties":{"k":{"format":"email"}}}'
+    )
+    expect(assertion.validate("k = '2962'\n").length).to eq(1)
   end
 end
 
@@ -250,6 +267,6 @@ describe "unicode property escapes (engine 0.3.24)" do
   end
 
   it "reports the engine version" do
-    expect(Teptris::TOML.engine_version).to eq("0.3.24")
+    expect(Teptris::TOML.engine_version).to eq("0.3.25")
   end
 end
