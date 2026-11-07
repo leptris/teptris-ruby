@@ -55,6 +55,16 @@ RSpec.describe Teptris::Schema do
       expect { described_class.compile('{"type":}') }
         .to raise_error(Teptris::Error, /error/)
     end
+
+    it "compiles a long plain tail after an escape" do
+      # engine 0.3.26: the JSON reader sized the escaped-string rebuild
+      # from the prefix alone; a long plain tail after the first escape
+      # wrote past the arena block (fuzz finding)
+      schema = described_class.compile(
+        '{"description":"A\\u00e9' + ("B" * (128 * 1024)) + '"}'
+      )
+      expect(schema.validate("k = 1\n").length).to eq(0)
+    end
   end
 
   describe "the four policies" do
