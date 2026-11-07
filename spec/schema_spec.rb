@@ -60,8 +60,9 @@ RSpec.describe Teptris::Schema do
       # engine 0.3.26: the JSON reader sized the escaped-string rebuild
       # from the prefix alone; a long plain tail after the first escape
       # wrote past the arena block (fuzz finding)
+      tail = "B" * (128 * 1024)
       schema = described_class.compile(
-        '{"description":"A\\u00e9' + ("B" * (128 * 1024)) + '"}'
+        "{\"description\":\"A\\u00e9#{tail}\"}"
       )
       expect(schema.validate("k = 1\n").length).to eq(0)
     end
