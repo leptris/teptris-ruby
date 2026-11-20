@@ -245,6 +245,15 @@ jobs:
             platforms: "aarch64-mingw-ucrt arm-linux powerpc64le-linux s390x-linux x86_64-linux-musl aarch64-linux-musl"
     env:
       MINORS_BY_PLATFORM: "x64-mingw32:3.0 x64-mingw-ucrt:3.1_3.2_3.3_3.4_4.0 aarch64-mingw-ucrt:3.4_4.0 x86_64-linux:3.3_3.4_4.0 aarch64-linux:3.3_3.4_4.0 x86_64-linux-musl:3.3_3.4_4.0 aarch64-linux-musl:3.3_3.4_4.0 arm-linux:3.3_3.4_4.0 powerpc64le-linux:3.3_3.4_4.0 s390x-linux:3.3_3.4_4.0 x86_64-darwin:3.3_3.4_4.0 arm64-darwin:3.3_3.4_4.0"
+      # The gnu glibc floor gate (issue #195, the leptris-ruby#2109
+      # class): the max GLIBC_2.X symbol version each gnu gem may
+      # bind, measured on the SHIPPED 0.3.31.0 artifacts (gem fetch
+      # + strings per ext). A build-env libc change (a runner image
+      # refresh is how leptris-ruby green->2.34 happened) binds the
+      # pthread-merge trio and narrows the floor silently - the gate
+      # fails the assemble before anything ships. Musl/darwin/mingw
+      # carry no glibc versions: no entry, no gate.
+      GLIBC_FLOORS_BY_PLATFORM: "x86_64-linux:14 aarch64-linux:17 arm-linux:4 powerpc64le-linux:17 s390x-linux:4"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -283,6 +292,24 @@ jobs:
             bundle exec rake gem:pack:$plat
             mkdir -p "/tmp/pkg-$plat"
             mv pkg/*.gem "/tmp/pkg-$plat/"
+            # the gnu glibc floor gate (issue #195): assert the just-
+            # packed gem against its documented floor
+            floor=$(printf '%s\n' "$GLIBC_FLOORS_BY_PLATFORM" | tr ' ' '\n' | sed -n "s/^${plat}://p")
+            if [ -n "$floor" ]; then
+              rm -rf /tmp/gate && mkdir -p /tmp/gate
+              gemfile=$(ls "/tmp/pkg-$plat"/*.gem)
+              # a .gem's OUTER container is a plain POSIX tar, not gzip
+              tar xf "$gemfile" -C /tmp/gate data.tar.gz
+              tar xzf /tmp/gate/data.tar.gz -C /tmp/gate
+              max=$(find /tmp/gate -name '*.so' -exec strings {} \; \
+                    | grep -oE 'GLIBC_2\.[0-9]+' | sort -uV | tail -1)
+              echo "$plat max glibc symbol version: ${max:-none} (floor 2.$floor)"
+              minor=${max#GLIBC_2.}
+              if [ -n "$max" ] && [ "$minor" -gt "$floor" ]; then
+                echo "::error::$plat binds ${max}; the documented floor is 2.$floor (issue #195) - a build-env change narrowed the gnu floor"
+                exit 1
+              fi
+            fi
           done
           mkdir -p pkg
           for plat in ${{ matrix.platforms }}; do
