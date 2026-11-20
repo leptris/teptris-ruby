@@ -9,9 +9,19 @@ RSpec.describe "launch checklist (leptris/teptris-ruby#3)" do
            "foreign = Object.constants.grep(/Tomlib|Tomlrb|Psych/); " \
            "print({ teptris: Object.const_defined?(:Teptris), " \
            "foreign: foreign }.inspect)"
-    out = IO.popen([RbConfig.ruby,
-                    "-I#{File.expand_path("../lib", __dir__)}",
-                    "-e", prog], &:read)
+    # Hermetic probe: the rspec parent runs under `bundle exec`,
+    # whose injected RUBYOPT makes the child bootstrap Bundler before
+    # requiring teptris - and whatever that Bundler/RubyGems vintage
+    # defines lands in Object.constants (the windows image refresh
+    # started riding Psych in between one green run and the next,
+    # with zero lib changes). Scrub the injection so the child
+    # measures `require "teptris"` alone.
+    out = IO.popen(
+      [{ "RUBYOPT" => nil, "RUBYLIB" => nil, "BUNDLE_GEMFILE" => nil,
+         "BUNDLE_BIN_PATH" => nil, "BUNDLE_SETUP" => nil },
+       RbConfig.ruby,
+       "-I#{File.expand_path("../lib", __dir__)}",
+       "-e", prog], &:read)
     expect($CHILD_STATUS.success?).to be(true)
     # Hash#inspect spelling differs across ruby minors (3.3: {:a=>1},
     # 3.4+: {a: 1}) — parse the subprocess's own output instead
