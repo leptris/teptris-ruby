@@ -21,7 +21,8 @@ RSpec.describe "launch checklist (leptris/teptris-ruby#3)" do
          "BUNDLE_BIN_PATH" => nil, "BUNDLE_SETUP" => nil },
        RbConfig.ruby,
        "-I#{File.expand_path("../lib", __dir__)}",
-       "-e", prog], &:read)
+       "-e", prog], &:read
+    )
     expect($CHILD_STATUS.success?).to be(true)
     # Hash#inspect spelling differs across ruby minors (3.3: {:a=>1},
     # 3.4+: {a: 1}) — parse the subprocess's own output instead
