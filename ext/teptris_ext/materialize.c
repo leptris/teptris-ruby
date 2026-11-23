@@ -1350,7 +1350,10 @@ static VALUE ext_load_batch(int argc, VALUE *argv, VALUE self) {
 static VALUE ext_schema_compile(VALUE self, VALUE str);
 static VALUE ext_schema_validate(VALUE self, VALUE rsch, VALUE str);
 
-void Init_teptris_ext(void) {
+#ifndef TEPTRIS_INIT_SYMBOL
+#define TEPTRIS_INIT_SYMBOL Init_teptris_ext
+#endif
+void TEPTRIS_INIT_SYMBOL(void) {
     /* every module static is written once here and read-only after;
      * call state (key cache, arenas, types) is per-object or per-call */
     rb_ext_ractor_safe(true);

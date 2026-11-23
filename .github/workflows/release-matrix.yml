@@ -270,7 +270,7 @@ jobs:
           set -eux
           for plat in ${{ matrix.platforms }}; do
             # wipe any earlier platform's exts — no cross-gem leaks
-            rm -rf lib/teptris/3.* lib/teptris/4.0 lib/teptris/*.so lib/teptris/*.bundle 2>/dev/null || true
+            rm -rf lib/teptris/3.* lib/teptris/4.0 lib/teptris/native_* lib/teptris/*.so lib/teptris/*.bundle 2>/dev/null || true
             pattern="ext-${plat}"
             if echo "$plat" | grep -q musl; then pattern="muslext-${plat}"; fi
             gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts" > /dev/null 2>&1 || true
@@ -285,8 +285,10 @@ jobs:
             rm -rf /tmp/ext-dl
             minors=$(printf '%s\n' "$MINORS_BY_PLATFORM" | tr ' ' '\n' | sed -n "s/^${plat}://p" | tr '_' ' ')
             for v in $minors; do
-              test -f "lib/teptris/$v/teptris_ext.so" \
-                -o -f "lib/teptris/$v/teptris_ext.bundle" \
+              flat=$(echo "$v" | tr '.' '_')
+              test -f "lib/teptris/native_${flat}.so" \
+                -o -f "lib/teptris/native_${flat}.bundle" \
+                -o -f "lib/teptris/native_${flat}.dll" \
                 || { echo "::error::missing ruby $v extension for $plat"; ls -laR lib/teptris; exit 1; }
             done
             bundle exec rake gem:pack:$plat

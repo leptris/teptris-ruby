@@ -8,28 +8,24 @@ require_relative "teptris/descriptor"
 require_relative "teptris/toml"
 require_relative "teptris/schema"
 
-# Fat-gem layout on EVERY platform (nokogiri's shape): one extension
-# per ruby minor under lib/teptris/<minor>/ — ucrt rubies bind a
-# minor-named DLL, and a unix .so built for one minor fails dlopen on
-# another (a 3.3-built ext hard-failed under ruby 4.0 with the gem
-# already installed). The native extension IS the binding — no
-# fallback, ever; minors without a prebuilt cell ship via the source
-# gem, which compiles at install.
-minor = RUBY_VERSION[/\A\d+\.\d+/]
+# The native-layer contract (issue #197): one DOT-FREE bundle per
+# ruby minor, FLAT under lib/teptris/ — native_<major>_<minor> — so
+# coexistence across minors is exact and a wrong-minor load is
+# structurally impossible (the compiled-in RString layout changed in
+# 3.2 — the 3.1 segfault class; no unversioned fallback, ever). The
+# native extension IS the binding — minors without a prebuilt cell
+# ship via the source gem, which compiles AT INSTALL under the same
+# name (extconf targets teptris/native_<maj>_<min>, so the installed
+# bundle lands on the load path under the identical require string).
+maj = RbConfig::CONFIG["MAJOR"]
+min = RbConfig::CONFIG["MINOR"]
 begin
-  # fat prebuilt gems: lib/teptris/<minor>/teptris_ext
-  require "teptris/#{minor}/teptris_ext"
+  require "teptris/native_#{maj}_#{min}"
 rescue LoadError
-  begin
-    # source-built installs: rubygems puts the compiled ext on the
-    # load path under its bare name (no <minor> dir exists)
-    require "teptris_ext"
-  rescue LoadError
-    raise LoadError,
-          "teptris native extension for ruby #{RUBY_VERSION} not found " \
-          "(#{RUBY_PLATFORM}; no fallback by design — install the source " \
-          "gem: gem install teptris --platform ruby)"
-  end
+  raise LoadError,
+        "teptris native extension for ruby #{RUBY_VERSION} not found " \
+        "(#{RUBY_PLATFORM}; no fallback by design — install the source " \
+        "gem: gem install teptris --platform ruby)"
 end
 
 module Teptris

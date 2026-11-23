@@ -23,7 +23,7 @@ Gem::Specification.new do |spec|
     "rubygems_mfa_required" => "true"
   }
   spec.required_ruby_version = ">= 3.0"
-  spec.files = Dir["lib/**/*.rb"] + Dir["lib/teptris_ext.*"] +
+  spec.files = Dir["lib/**/*.rb"] +
                Dir["sig/*.rbs"] + ["Steepfile"]
   spec.bindir = "bin"
   spec.executables = []

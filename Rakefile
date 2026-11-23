@@ -70,17 +70,20 @@ task :compile do
 
   extdir = File.expand_path("ext/teptris_ext", __dir__)
   Dir.chdir(extdir) do
-    rm_f(["Makefile", "teptris_ext.bundle"] + Dir["*.o"])
+    maj = RbConfig::CONFIG["MAJOR"]
+    min = RbConfig::CONFIG["MINOR"]
+    rm_f(["Makefile", "native_#{maj}_#{min}.bundle"] + Dir["*.o"])
     sh "ruby extconf.rb --with-teptris-libdir=#{libdir} --with-teptris-include=#{inc}"
     sh "make"
-    ext = Dir["teptris_ext.{so,bundle,dll}"].first
+    ext = Dir["native_#{maj}_#{min}.{so,bundle,dll}"].first
     raise "extension build produced no bundle in #{extdir}" unless ext
 
-    # fat gem on every platform: one extension per ruby minor under
-    # lib/teptris/<minor>/ (a unix .so built for one minor fails
-    # dlopen on another — ruby 4.0 could not load the 3.3-built ext)
-    minor = RUBY_VERSION[/\A\d+\.\d+/]
-    dest = File.expand_path("lib/teptris/#{minor}", __dir__)
+    # the native-layer contract (issue #197): one DOT-FREE bundle
+    # per ruby minor, FLAT under lib/teptris/ (a unix .so built for
+    # one minor fails dlopen on another — ruby 4.0 could not load
+    # the 3.3-built ext; the name carries the minor so coexistence
+    # is exact, never a wrong-minor load)
+    dest = File.expand_path("lib/teptris", __dir__)
     mkdir_p(dest)
     cp(ext, dest)
   end
@@ -186,8 +189,7 @@ platforms.each do |platform|
   # platform gem also carries the engine SOURCE (recompile path:
   # untar, cd ext/teptris_ext, ruby extconf.rb && make).
   pack = task "gem:pack:#{platform}" do
-    natives = Dir.glob("lib/teptris_ext.{so,bundle,dll}") +
-              Dir.glob("lib/teptris/*/teptris_ext.{so,bundle,dll}")
+    natives = Dir.glob("lib/teptris/native_*.{so,bundle,dll}")
     abort "no native extension under lib/ for #{platform} — run rake compile first" if natives.empty?
     vendor_engine
     # doctrine gate: a platform gem carries the binary AND the source
