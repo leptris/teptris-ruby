@@ -1,4 +1,11 @@
 module Teptris
+
+  # the native-layer SSOT (issue #197; lib/teptris/supported.rb)
+  DEFAULT_MINORS: Array[String]
+  MINORS_BY_PLATFORM: Hash[String, Array[String]]
+  def self.minors_for: (String platform) -> Array[String]
+  def self.minors_ladder: ((String | Array[String]) platforms) -> Array[String]
+  def self.minors_map: (Array[String] platforms) -> String
   VERSION: String
 
   # mirrored from the engine's teptris_status (lib/teptris.rb)
