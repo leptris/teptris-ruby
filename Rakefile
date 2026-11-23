@@ -30,11 +30,13 @@ CMAKE_FLAGS = %w[
 # remedy - never as a tar error forty lines later. Both fetch
 # paths (rake compile, vendor_engine) go through this.
 def engine_tarball(version, build)
-  tag_ok = system(
-    "curl", "-sf", "-o", File::NULL,
-    "https://api.github.com/repos/leptris/teptris/git/ref/tags/v#{version}"
-  )
-  unless tag_ok
+  # git ls-remote, not the REST API: the unauthenticated API is
+  # rate-limited per IP and shared runner pools exhaust it - a 403
+  # there reads as "tag missing" (the first CI run caught exactly
+  # that false refusal on the REAL pin). The git protocol carries
+  # no such budget; emptiness of the output is the verdict.
+  resolved = `git ls-remote --tags https://github.com/leptris/teptris refs/tags/v#{version}`
+  if resolved.strip.empty?
     abort "engine-lockstep refusal: tag v#{version} does not exist on " \
           "leptris/teptris - the Rakefile pin is stale. Cut the engine " \
           "release first (teptris release.yml) or move LIBTEPTRIS_VERSION."
