@@ -120,8 +120,9 @@ jobs:
             [ "$v" = "$FIRST_MINOR" ] && continue   # built by rake above
             ( cd ext/teptris_ext \
               && rm -f Makefile native_*.so native_*.bundle ./*.o && rm -rf teptris \
-              && ruby extconf.rb --with-teptris-libdir="$ROOT/$ENG/src" \
-                                --with-teptris-include="$ROOT/$ENG/src/include" \
+              && TEPTRIS_BUNDLE_MINOR="$(echo "$v" | tr '.' '_')" \
+                 ruby extconf.rb --with-teptris-libdir="$ROOT/$ENG/src" \
+                                 --with-teptris-include="$ROOT/$ENG/src/include" \
               && make )
             mkdir -p lib/teptris
             cp ext/teptris_ext/native_* lib/teptris/
