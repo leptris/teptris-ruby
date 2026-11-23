@@ -124,7 +124,7 @@ jobs:
                                 --with-teptris-include="$ROOT/$ENG/src/include" \
               && make )
             mkdir -p lib/teptris
-            cp ext/teptris_ext/teptris/native_* lib/teptris/
+            cp ext/teptris_ext/native_* lib/teptris/
           done
           find lib/teptris -mindepth 1 -maxdepth 1 -ls
 
@@ -138,7 +138,7 @@ jobs:
         shell: bash
         run: |
           rake compile
-          ls lib/teptris/native_3_1.dll
+          ls lib/teptris/native_3_1.*
       - uses: ruby/setup-ruby@v1
         if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw-ucrt')
         with: { ruby-version: '3.2', bundler-cache: false }
@@ -148,7 +148,7 @@ jobs:
         shell: bash
         run: |
           rake compile
-          ls lib/teptris/native_3_2.dll
+          ls lib/teptris/native_3_2.*
       - uses: ruby/setup-ruby@v1
         if: runner.os == 'Windows' && contains(matrix.platforms, 'mingw-ucrt') && (matrix.first_minor || '3.3') != '3.4'
         with: { ruby-version: '3.4', bundler-cache: false }
@@ -158,7 +158,7 @@ jobs:
         shell: bash
         run: |
           rake compile
-          ls lib/teptris/native_3_4.dll
+          ls lib/teptris/native_3_4.*
       - uses: ruby/setup-ruby@v1
         if: runner.os == 'Windows' && contains(matrix.platforms, 'mingw-ucrt')
         with: { ruby-version: '4.0', bundler-cache: false }
@@ -171,7 +171,7 @@ jobs:
         # instrumented builds raise cleanly). Same cell fix as ci.yml.
         run: |
           TEPTRIS_PGO=0 rake compile
-          ls lib/teptris/native_4_0.dll
+          ls lib/teptris/native_4_0.*
       - uses: ruby/setup-ruby@v1
         if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw32')
         with: { ruby-version: '3.0', bundler-cache: false }
@@ -183,13 +183,13 @@ jobs:
           # ruby 3.0 cannot run the lock's bundler-4; the compile task
           # needs only rake — detach from the Gemfile entirely
           BUNDLE_GEMFILE=/dev/null rake compile
-          ls lib/teptris/native_3_0.dll
+          ls lib/teptris/native_3_0.*
           # move 3.0 OUT of lib/teptris BEFORE the ucrt artifact
           # snapshot: the ucrt gem must not carry the msvcrt ext
           # (0.2.40 class). Staged inside the WORKSPACE — upload
           # -artifact's node glob can't resolve /tmp on Windows.
           rm -rf stage-m32 && mkdir -p stage-m32
-          mv lib/teptris/native_3_0.dll stage-m32/native_3_0.dll
+          mv lib/teptris/native_3_0.* stage-m32/
       # ucrt artifact snapshots WITHOUT 3.0 inside
       - name: Upload x64-mingw-ucrt exts
         if: contains(matrix.platforms, 'x64-mingw-ucrt')
