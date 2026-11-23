@@ -119,14 +119,14 @@ jobs:
             FIRST_MINOR="${{ matrix.first_minor || '3.3' }}"
             [ "$v" = "$FIRST_MINOR" ] && continue   # built by rake above
             ( cd ext/teptris_ext \
-              && rm -f Makefile teptris_ext.so teptris_ext.bundle teptris_ext.dll ./*.o \
+              && rm -f Makefile native_*.so native_*.bundle ./*.o && rm -rf teptris \
               && ruby extconf.rb --with-teptris-libdir="$ROOT/$ENG/src" \
                                 --with-teptris-include="$ROOT/$ENG/src/include" \
               && make )
-            mkdir -p "lib/teptris/$v"
-            cp ext/teptris_ext/teptris_ext.* "lib/teptris/$v/"
+            mkdir -p lib/teptris
+            cp ext/teptris_ext/teptris/native_* lib/teptris/
           done
-          find lib/teptris -mindepth 1 -maxdepth 2 -ls
+          find lib/teptris -mindepth 1 -maxdepth 1 -ls
 
       # windows per-minor sequential setup (EEXIST-safe)
       - uses: ruby/setup-ruby@v1
@@ -138,7 +138,7 @@ jobs:
         shell: bash
         run: |
           rake compile
-          ls lib/teptris/3.1/
+          ls lib/teptris/native_3_1.dll
       - uses: ruby/setup-ruby@v1
         if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw-ucrt')
         with: { ruby-version: '3.2', bundler-cache: false }
@@ -148,7 +148,7 @@ jobs:
         shell: bash
         run: |
           rake compile
-          ls lib/teptris/3.2/
+          ls lib/teptris/native_3_2.dll
       - uses: ruby/setup-ruby@v1
         if: runner.os == 'Windows' && contains(matrix.platforms, 'mingw-ucrt') && (matrix.first_minor || '3.3') != '3.4'
         with: { ruby-version: '3.4', bundler-cache: false }
@@ -158,7 +158,7 @@ jobs:
         shell: bash
         run: |
           rake compile
-          ls lib/teptris/3.4/
+          ls lib/teptris/native_3_4.dll
       - uses: ruby/setup-ruby@v1
         if: runner.os == 'Windows' && contains(matrix.platforms, 'mingw-ucrt')
         with: { ruby-version: '4.0', bundler-cache: false }
@@ -171,7 +171,7 @@ jobs:
         # instrumented builds raise cleanly). Same cell fix as ci.yml.
         run: |
           TEPTRIS_PGO=0 rake compile
-          ls lib/teptris/4.0/
+          ls lib/teptris/native_4_0.dll
       - uses: ruby/setup-ruby@v1
         if: runner.os == 'Windows' && contains(matrix.platforms, 'x64-mingw32')
         with: { ruby-version: '3.0', bundler-cache: false }
@@ -183,13 +183,13 @@ jobs:
           # ruby 3.0 cannot run the lock's bundler-4; the compile task
           # needs only rake — detach from the Gemfile entirely
           BUNDLE_GEMFILE=/dev/null rake compile
-          ls lib/teptris/3.0/
+          ls lib/teptris/native_3_0.dll
           # move 3.0 OUT of lib/teptris BEFORE the ucrt artifact
           # snapshot: the ucrt gem must not carry the msvcrt ext
           # (0.2.40 class). Staged inside the WORKSPACE — upload
           # -artifact's node glob can't resolve /tmp on Windows.
           rm -rf stage-m32 && mkdir -p stage-m32
-          mv lib/teptris/3.0 stage-m32/3.0
+          mv lib/teptris/native_3_0.dll stage-m32/native_3_0.dll
       # ucrt artifact snapshots WITHOUT 3.0 inside
       - name: Upload x64-mingw-ucrt exts
         if: contains(matrix.platforms, 'x64-mingw-ucrt')
@@ -198,7 +198,7 @@ jobs:
           name: ext-x64-mingw-ucrt
           path: lib/teptris
       # mingw32 artifact: the staged 3.0 alone (LCA = stage-m32, so
-      # the artifact root carries 3.0/teptris_ext.dll)
+      # the artifact root carries native_3_0.dll)
       - name: Upload x64-mingw32 exts
         if: contains(matrix.platforms, 'x64-mingw32')
         uses: actions/upload-artifact@v7
@@ -386,7 +386,7 @@ jobs:
                 bundle exec rake compile
               '
           done
-          ls -la lib/teptris/*/teptris_ext.so
+          ls -la lib/teptris/native_*.so
 
       - name: Upload extension cells
         if: matrix.minors
@@ -478,7 +478,7 @@ jobs:
                 gem install rake --no-document
                 rake compile
               '
-            ls -la "lib/teptris/$v/"
+            ls -la lib/teptris/native_*.so
           done
 
       - uses: actions/upload-artifact@v7
