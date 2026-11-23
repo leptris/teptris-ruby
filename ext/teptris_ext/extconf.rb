@@ -42,7 +42,14 @@ if archive_mode
   # Link the whole archive: every teptris symbol lands inside the ext.
   $LDFLAGS << " #{archive}"
 end
-create_makefile "teptris_ext"
+# the native-layer contract (issue #197): one DOT-FREE bundle name
+# per ruby minor - native_<major>_<minor> - with MRI deriving the
+# Init symbol from the basename; the C source gets the symbol via
+# -D (the compiled name must match the file per minor)
+maj = RbConfig::CONFIG["MAJOR"]
+min = RbConfig::CONFIG["MINOR"]
+$defs << "-DTEPTRIS_INIT_SYMBOL=Init_native_#{maj}_#{min}"
+create_makefile "teptris/native_#{maj}_#{min}"
 
 # mkmf buries the absolute builder libruby path in librubyarg_shared;
 # blank the variable DEFINITIONS in the generated Makefile so any
