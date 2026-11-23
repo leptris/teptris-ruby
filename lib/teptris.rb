@@ -3,6 +3,7 @@
 require "date"
 
 require_relative "teptris/version"
+require_relative "teptris/supported"
 require_relative "teptris/error"
 require_relative "teptris/descriptor"
 require_relative "teptris/toml"

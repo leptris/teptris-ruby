@@ -24,6 +24,34 @@ permissions:
 # own groups, and artifacts are per-run so parallel callers cannot
 # collide
 jobs:
+  # The SSOT plan (issue #197): the minors the train builds and
+  # packs come from lib/teptris/supported.rb - the workflows never
+  # inline a list. Every consumer below reads a plan output.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      minors_default: ${{ steps.plan.outputs.minors_default }}
+      minors_by_platform: ${{ steps.plan.outputs.minors_by_platform }}
+      ladder_windows_x64: ${{ steps.plan.outputs.ladder_windows_x64 }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - id: plan
+        run: |
+          ruby -Ilib -rteptris/supported -e '
+            platforms = %w[x64-mingw32 x64-mingw-ucrt aarch64-mingw-ucrt
+                           x86_64-linux aarch64-linux x86_64-linux-musl
+                           aarch64-linux-musl arm-linux powerpc64le-linux
+                           s390x-linux x86_64-darwin arm64-darwin]
+            puts "minors_default=#{Teptris::DEFAULT_MINORS.join(" ")}"
+            puts "minors_by_platform=#{Teptris.minors_map(platforms)}"
+            puts "ladder_windows_x64=#{Teptris.minors_ladder("x64-mingw32 x64-mingw-ucrt").join(" ")}"
+          ' >> "$GITHUB_OUTPUT"
+
   build-source:
     name: Build source gem
     if: always() && !cancelled() && !failure()
@@ -43,6 +71,7 @@ jobs:
           path: pkg/*.gem
 
   build:
+    needs: plan
     if: always() && !cancelled() && !failure()
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -66,8 +95,8 @@ jobs:
           - { os: macos-latest,    platforms: "arm64-darwin" }
           - { os: macos-15-intel,  platforms: "x86_64-darwin" }
     env:
-      # minors per platform, mirroring the assemble-fat table
-      MINORS_DEFAULT: "3.3 3.4 4.0"
+      # minors per platform, from the SSOT (the plan job)
+      MINORS_DEFAULT: ${{ needs.plan.outputs.minors_default }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -83,8 +112,11 @@ jobs:
             *x64-mingw-ucrt*) MINORS="3.3 3.4 4.0" ;;
             *) MINORS="$MINORS_DEFAULT" ;;
           esac
-          # mingw32's 3.0 rides the windows-x64 cell as its own gem
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then MINORS="3.0 3.1 3.2 3.3 3.4 4.0"; fi
+          # mingw32's ladder rides the windows-x64 cell (its own gem
+          # carries only 3.0; the ladder compiles for the ucrt set)
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            MINORS="${{ needs.plan.outputs.ladder_windows_x64 }}"
+          fi
           echo "MINORS=$MINORS" >> "$GITHUB_ENV"
           echo "ENGINE_VER=$(grep -o 'LIBTEPTRIS_VERSION = "[^"]*"' Rakefile | cut -d'"' -f2)" >> "$GITHUB_ENV"
 
@@ -226,7 +258,7 @@ jobs:
     # this race (qemu cells always finished before assemble got a
     # slot); the batched train runs assemble sooner, so the edge is
     # explicit now.
-    needs: [build, build-musl, build-qemu]
+    needs: [plan, build, build-musl, build-qemu]
     if: always() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -245,7 +277,7 @@ jobs:
           - group: emulated
             platforms: "aarch64-mingw-ucrt arm-linux powerpc64le-linux s390x-linux x86_64-linux-musl aarch64-linux-musl"
     env:
-      MINORS_BY_PLATFORM: "x64-mingw32:3.0 x64-mingw-ucrt:3.1_3.2_3.3_3.4_4.0 aarch64-mingw-ucrt:3.4_4.0 x86_64-linux:3.3_3.4_4.0 aarch64-linux:3.3_3.4_4.0 x86_64-linux-musl:3.3_3.4_4.0 aarch64-linux-musl:3.3_3.4_4.0 arm-linux:3.3_3.4_4.0 powerpc64le-linux:3.3_3.4_4.0 s390x-linux:3.3_3.4_4.0 x86_64-darwin:3.3_3.4_4.0 arm64-darwin:3.3_3.4_4.0"
+      MINORS_BY_PLATFORM: ${{ needs.plan.outputs.minors_by_platform }}
       # The gnu glibc floor gate (issue #195, the leptris-ruby#2109
       # class): the max GLIBC_2.X symbol version each gnu gem may
       # bind, measured on the SHIPPED 0.3.31.0 artifacts (gem fetch
@@ -328,6 +360,7 @@ jobs:
           path: pkg/*.gem
 
   build-musl:
+    needs: plan
     if: always() && !cancelled() && !failure()
     runs-on: ${{ matrix.os }}
     # no `any` gem: no-fallback means the ext is mandatory (issue #7).
@@ -337,10 +370,10 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: x86_64-linux-musl
-            minors: "3.3 3.4 4.0"
+            minors: ${{ needs.plan.outputs.minors_default }}
           - os: ubuntu-24.04-arm
             platform: aarch64-linux-musl
-            minors: "3.3 3.4 4.0"
+            minors: ${{ needs.plan.outputs.minors_default }}
             # 32-bit ARM has no runners: the container runs emulated
           - os: ubuntu-latest
             platform: arm-linux-musl
@@ -440,6 +473,7 @@ jobs:
   # on tiers where working-at-all is the goal.
   build-qemu:
     name: Build ${{ matrix.platform }} exts (qemu)
+    needs: plan
     if: always() && !cancelled() && !failure()
     runs-on: ubuntu-latest
     timeout-minutes: 75
@@ -465,9 +499,11 @@ jobs:
         run: docker run --privileged --rm tonistiigi/binfmt --install arm,ppc64le,s390x
 
       - name: Build each ruby minor's extension
+        env:
+          MINORS_DEFAULT: ${{ needs.plan.outputs.minors_default }}
         run: |
           set -eux
-          for v in 3.3 3.4 4.0; do
+          for v in $MINORS_DEFAULT; do
             docker run --rm --platform "${{ matrix.qemu }}" \
               -v "${PWD}:/work" -w /work \
               -e TEPTRIS_PGO=0 \
@@ -495,7 +531,7 @@ jobs:
   # emulated tier (armv7/ppc64le/s390x/aarch64-linux) stays covered
   # by the smoke lane the release triggers right after publishing.
   verify-gems:
-    needs: [build-source, build, assemble-fat, build-musl, build-qemu]
+    needs: [plan, build-source, build, assemble-fat, build-musl, build-qemu]
     if: always() && !cancelled() && !failure()
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -582,6 +618,8 @@ jobs:
       - name: Verify the glibc + musl fat gems and the source gem
         if: matrix.kind == 'linux-all'
         shell: bash
+        env:
+          MINORS_DEFAULT: ${{ needs.plan.outputs.minors_default }}
         run: |
           set -eux
           ls pkg/
@@ -593,7 +631,7 @@ jobs:
               gem install --local $gem --no-document
               ruby scripts/gem_verify.rb"
           }
-          for v in 3.3 3.4 4.0; do
+          for v in $MINORS_DEFAULT; do
             verify "ruby:${v}-bookworm" "pkg/teptris-*-x86_64-linux.gem" \
               "apt-get update -qq >/dev/null && apt-get install -y -qq make gcc g++ cmake >/dev/null"
             verify "ruby:${v}-alpine" "pkg/teptris-*-x86_64-linux-musl.gem" \
