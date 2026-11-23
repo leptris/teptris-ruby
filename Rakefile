@@ -25,6 +25,24 @@ CMAKE_FLAGS = %w[
   -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 ].freeze
 
+# engine-lockstep refusal (the native-layer contract, issue
+# #197): a missing pin tag fails HERE, naming the pin and the
+# remedy - never as a tar error forty lines later. Both fetch
+# paths (rake compile, vendor_engine) go through this.
+def engine_tarball(version, build)
+  tag_ok = system(
+    "curl", "-sf", "-o", File::NULL,
+    "https://api.github.com/repos/leptris/teptris/git/ref/tags/v#{version}"
+  )
+  unless tag_ok
+    abort "engine-lockstep refusal: tag v#{version} does not exist on " \
+          "leptris/teptris - the Rakefile pin is stale. Cut the engine " \
+          "release first (teptris release.yml) or move LIBTEPTRIS_VERSION."
+  end
+  url = "https://api.github.com/repos/leptris/teptris/tarball/v#{version}"
+  sh "curl -sL #{url} | tar xz -C #{build} --strip-components=1"
+end
+
 desc "Build libteptris + the native extension into lib/"
 task :compile do
   version = ENV.fetch("LIBTEPTRIS_VERSION", LIBTEPTRIS_VERSION)
@@ -47,8 +65,7 @@ task :compile do
   if src
     cmake_src = File.expand_path(src)
   else
-    url = "https://api.github.com/repos/leptris/teptris/tarball/v#{version}"
-    sh "curl -sL #{url} | tar xz -C #{build} --strip-components=1"
+    engine_tarball(version, build)
     cmake_src = build
   end
   inc = File.join(cmake_src, "src/include")
@@ -116,8 +133,7 @@ def vendor_engine
   if src
     cmake_src = File.expand_path(src)
   else
-    url = "https://api.github.com/repos/leptris/teptris/tarball/v#{version}"
-    sh "curl -sL #{url} | tar xz -C #{build} --strip-components=1"
+    engine_tarball(version, build)
     cmake_src = build
   end
   eng = File.expand_path("ext/teptris_ext/engine", __dir__)
