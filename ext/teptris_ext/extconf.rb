@@ -46,10 +46,13 @@ end
 # per ruby minor - native_<major>_<minor> - with MRI deriving the
 # Init symbol from the basename; the C source gets the symbol via
 # -D (the compiled name must match the file per minor)
-maj = RbConfig::CONFIG["MAJOR"]
-min = RbConfig::CONFIG["MINOR"]
-$defs << "-DTEPTRIS_INIT_SYMBOL=Init_native_#{maj}_#{min}"
-create_makefile "teptris/native_#{maj}_#{min}"
+# the ext-only train loop builds every minor under ONE running
+# ruby - the bundle NAME comes from the loop's target (env), the
+# default is the running ruby itself
+bundle = ENV["TEPTRIS_BUNDLE_MINOR"] ||
+         "#{RbConfig::CONFIG["MAJOR"]}_#{RbConfig::CONFIG["MINOR"]}"
+$defs << "-DTEPTRIS_INIT_SYMBOL=Init_native_#{bundle}"
+create_makefile "teptris/native_#{bundle}"
 
 # mkmf buries the absolute builder libruby path in librubyarg_shared;
 # blank the variable DEFINITIONS in the generated Makefile so any
