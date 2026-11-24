@@ -32,6 +32,17 @@ class Teptris::Schema
     def to_h
       { path: path, schema_path: schema_path, message: message }
     end
+
+    # Value semantics: two violations of the same fact are the same
+    # violation, wherever they came from (validate vs validate_doc).
+    def ==(other)
+      other.is_a?(Violation) && other.to_h == to_h
+    end
+    alias eql? ==
+
+    def hash
+      to_h.hash
+    end
   end
 
   class << self
@@ -47,10 +58,7 @@ class Teptris::Schema
   # Validate raw TOML; an empty array = valid. Raises
   # Teptris::ParseError when the document does not parse.
   def validate(toml)
-    raw = JSON.parse(TeptrisExt.schema_validate(@handle, toml))
-    raw.map do |v|
-      Violation.new(v["path"], v["schemaPath"], v["message"])
-    end
+    violations(TeptrisExt.schema_validate(@handle, toml))
   end
 
   # True when the document parses with no violations.
@@ -58,7 +66,31 @@ class Teptris::Schema
     validate(toml).empty?
   end
 
+  # Validate a RETAINED document (Teptris::TOML.load_doc): one parse,
+  # many validations — the engine's teptris_schema_validate_doc face.
+  # Raw TOML strings belong to #validate. Same violations as
+  # #validate.
+  def validate_doc(doc)
+    violations(TeptrisExt.schema_validate_doc(@handle, doc))
+  end
+
+  # The retained-document twin of #valid?.
+  def valid_doc?(doc)
+    validate_doc(doc).empty?
+  end
+
   def inspect
     "#<#{self.class.name}>"
+  end
+
+  private
+
+  # The engine reports violations as a JSON array of
+  # {"path", "schemaPath", "message"} objects; the wrapper owns the
+  # materialized shape.
+  def violations(raw_json)
+    JSON.parse(raw_json).map do |v|
+      Violation.new(v["path"], v["schemaPath"], v["message"])
+    end
   end
 end
