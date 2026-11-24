@@ -43,7 +43,17 @@ module Teptris
     def initialize: (untyped handle) -> void
     def validate: (String toml) -> Array[Violation]
     def valid?: (String toml) -> bool
+    # retained-document faces (teptris-ruby#203): validate a
+    # Teptris::TOML.load_doc handle — one parse, many validations
+    def validate_doc: (untyped doc) -> Array[Violation]
+    def valid_doc?: (untyped doc) -> bool
     def inspect: () -> String
+
+    private
+
+    # the engine's violations JSON -> Violation objects (shared by
+    # validate and validate_doc)
+    def violations: (String raw_json) -> Array[Violation]
   end
 
   module TOML
@@ -114,6 +124,10 @@ module Teptris
     attr_reader first_row: Array[Integer]
 
     def walk: (String toml) -> Hash[String, untyped]
+
+    # retained-document face (teptris-ruby#203): walk a
+    # Teptris::TOML.load_doc handle — one parse, many walks
+    def walk_doc: (untyped doc) -> Hash[String, untyped]
   end
 end
 
@@ -179,11 +193,17 @@ module TeptrisExt
 
   def self.plan_emit: (untyped handle, String toml) -> Hash[String, untyped]
 
+  def self.plan_emit_doc: (untyped handle, untyped doc)
+                         -> Hash[String, untyped]
+
   # schema validation (engine 0.3.20): the compiled schema is an
   # opaque TypedData handle freed by GC
   def self.schema_compile: (String schema_json) -> TeptrisExt::Schema
 
   def self.schema_validate: (TeptrisExt::Schema schema, String toml) -> String
+
+  def self.schema_validate_doc: (TeptrisExt::Schema schema, untyped doc)
+                               -> String
 
   class Schema
     # opaque; owns the native handle

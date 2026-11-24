@@ -70,4 +70,12 @@ class Teptris::Descriptor
   def walk(toml)
     TeptrisExt.plan_emit(@handle, toml)
   end
+
+  # Walk a RETAINED document (Teptris::TOML.load_doc): one parse,
+  # many walks — the engine's teptris_plan_walk face, which takes the
+  # document node. Raw TOML strings belong to #walk. Same shape as
+  # #walk.
+  def walk_doc(doc)
+    TeptrisExt.plan_emit_doc(@handle, doc)
+  end
 end

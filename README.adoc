@@ -176,6 +176,16 @@ Compile failures raise `Teptris::Error` with the engine's diag
 (unsupported constructs are named, never silently ignored); documents
 that do not parse raise `Teptris::ParseError` with `line`/`column`.
 
+Retained documents (`Teptris::TOML.load_doc`) validate without a
+re-parse — one parse, many validations:
+
+[source,ruby]
+----
+doc = Teptris::TOML.load_doc(toml)
+schema.validate_doc(doc) # same violations as #validate
+schema.valid_doc?(doc)   # => true / false
+----
+
 === Descriptor plan path (lutaml-model recipe)
 
 Compile a plan once, materialize only the planned keys in one native
@@ -209,6 +219,9 @@ h = Teptris::TOML.load_schema(toml_string, DESC)
 #   "extra"=>{"whatever"=>true},   # or nil if absent
 # }
 # unplanned keys never appear
+
+# retained documents walk without a re-parse (one parse, many walks)
+h = DESC.walk_doc(Teptris::TOML.load_doc(toml_string))
 
 # lutaml-model adapter half (illustrative):
 #   kwargs = mapping.wire_to_attrs(h)   # rename + symbolize

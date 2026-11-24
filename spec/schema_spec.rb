@@ -137,6 +137,45 @@ RSpec.describe Teptris::Schema do
       end
     end
   end
+
+  # teptris-ruby#203: the retained-document face (engine's
+  # teptris_schema_validate_doc) — one parse, many validations, no
+  # re-parse per call. Strings stay on #validate; docs on #validate_doc.
+  describe "retained-document validation" do
+    let(:toml) { "name = \"\"\nport = 0\n" }
+
+    it "validates a load_doc document with the same violations" do
+      schema = described_class.compile(manifest_schema)
+      expect(schema.validate_doc(Teptris::TOML.load_doc(toml)))
+        .to eq(schema.validate(toml))
+    end
+
+    it "reads a valid document as empty" do
+      schema = described_class.compile(manifest_schema)
+      doc = Teptris::TOML.load_doc("name = \"srv\"\nport = 8080\n")
+      expect(schema.validate_doc(doc)).to be_empty
+      expect(schema.valid_doc?(doc)).to be(true)
+    end
+
+    it "reuses one compiled schema across many retained docs" do
+      schema = described_class.compile(manifest_schema)
+      good = Teptris::TOML.load_doc("name = \"a\"\nport = 1\n")
+      bad = Teptris::TOML.load_doc("port = 1\n")
+      expect(schema.valid_doc?(good)).to be(true)
+      expect(schema.validate_doc(bad).length).to eq(1)
+      expect(schema.valid_doc?(good)).to be(true)
+    end
+
+    it "rejects a String (strings belong to #validate)" do
+      schema = described_class.compile(manifest_schema)
+      expect { schema.validate_doc(toml) }.to raise_error(TypeError)
+    end
+
+    it "rejects a non-document object" do
+      schema = described_class.compile(manifest_schema)
+      expect { schema.validate_doc(42) }.to raise_error(TypeError)
+    end
+  end
 end
 
 RSpec.describe "the taplo parity surface (engine 0.3.21)" do

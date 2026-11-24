@@ -860,6 +860,28 @@ static VALUE ext_plan_emit(VALUE self, VALUE rb_plan, VALUE toml)
     return out;
 }
 
+/* The retained-document walk (teptris_plan_walk's own face): walk a
+ * load_doc() handle against the plan — one parse, many walks (and
+ * one document may serve several plans). Same shape as plan_emit. */
+static VALUE ext_plan_emit_doc(VALUE self, VALUE rb_plan, VALUE rbdoc)
+{
+    teptris_plan *plan;
+    TypedData_Get_Struct(rb_plan, teptris_plan, &plan_type, plan);
+    doc_owner *d;
+    TypedData_Get_Struct(rbdoc, doc_owner, &doc_owner_type, d);
+    teptris_status st;
+    teptris_plan_result *res =
+        teptris_plan_walk(plan, teptris_document_root(d->doc), &st);
+    if (res == NULL) {
+        char msg[96];
+        snprintf(msg, sizeof msg, "plan walk failed (status %d)", (int)st);
+        raise_teptris(msg);
+    }
+    VALUE out = asm_rows(plan, res, 0);
+    teptris_plan_result_free(res);
+    return out;
+}
+
 
 /* ---- lazy mode (#79) ----------------------------------------------
  * load_lazy returns a LazyValue wrapping the parsed tree: scalar
@@ -1349,6 +1371,7 @@ static VALUE ext_load_batch(int argc, VALUE *argv, VALUE self) {
 
 static VALUE ext_schema_compile(VALUE self, VALUE str);
 static VALUE ext_schema_validate(VALUE self, VALUE rsch, VALUE str);
+static VALUE ext_schema_validate_doc(VALUE self, VALUE rsch, VALUE rbdoc);
 
 #ifndef TEPTRIS_INIT_SYMBOL
 #define TEPTRIS_INIT_SYMBOL Init_teptris_ext
@@ -1373,6 +1396,8 @@ void TEPTRIS_INIT_SYMBOL(void) {
     rb_undef_alloc_func(cSchema);
     rb_define_module_function(m, "schema_compile", ext_schema_compile, 1);
     rb_define_module_function(m, "schema_validate", ext_schema_validate, 2);
+    rb_define_module_function(m, "schema_validate_doc",
+                              ext_schema_validate_doc, 2);
     cLazyOwner = rb_define_class_under(m, "LazyOwner", rb_cObject);
     cLazyValue = rb_define_class_under(m, "LazyValue", rb_cObject);
     rb_define_method(cLazyValue, "kind", lazy_kind, 0);
@@ -1391,6 +1416,7 @@ void TEPTRIS_INIT_SYMBOL(void) {
     rb_define_module_function(m, "edit", ext_edit, 3);
     rb_define_module_function(m, "plan_build", ext_plan_build, 2);
     rb_define_module_function(m, "plan_emit", ext_plan_emit, 2);
+    rb_define_module_function(m, "plan_emit_doc", ext_plan_emit_doc, 2);
     /* error/version load first (teptris.rb), then the ext bundle */
     VALUE t = rb_const_get(rb_cObject, rb_intern("Teptris"));
     eError = rb_const_get(t, rb_intern("Error"));
@@ -1490,6 +1516,23 @@ static VALUE ext_schema_validate(VALUE self, VALUE rsch, VALUE str) {
     teptris_document_free(doc);
     xfree(cbuf);
     dump_check(st);
+    VALUE out = rb_str_new(buf, (long)out_len);
+    free(buf);
+    return out;
+}
+
+/* The retained-document validation (teptris_schema_validate_doc's
+ * own face): validate a load_doc() handle against the compiled
+ * schema — one parse, many validations. Same violations JSON as
+ * schema_validate. */
+static VALUE ext_schema_validate_doc(VALUE self, VALUE rsch, VALUE rbdoc) {
+    schema_owner *o;
+    TypedData_Get_Struct(rsch, schema_owner, &schema_owner_type, o);
+    doc_owner *d;
+    TypedData_Get_Struct(rbdoc, doc_owner, &doc_owner_type, d);
+    char *buf = NULL;
+    size_t out_len = 0;
+    dump_check(teptris_schema_validate_doc(o->sch, d->doc, &buf, &out_len));
     VALUE out = rb_str_new(buf, (long)out_len);
     free(buf);
     return out;
